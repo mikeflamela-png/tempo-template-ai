@@ -535,6 +535,21 @@ function Index() {
               {busy ? <Loader2 className="size-5 animate-spin" /> : <Sparkles className="size-5" />}
               Generate Templates
             </Button>
+            <button
+              onClick={() => {
+                setPackKey(null);
+                setBlueprintId(null);
+                setMotionKey(null);
+                setCreativeSource("curated");
+                setEffectAmount(4);
+                setRisk(4);
+                generate();
+              }}
+              disabled={busy}
+              className="mt-3 w-full text-[11px] uppercase tracking-[0.2em] text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
+            >
+              Quick generate — let Tempo choose everything
+            </button>
           </div>
         </section>
       </div>
