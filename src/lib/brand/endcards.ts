@@ -283,9 +283,8 @@ export function appendEndCard(spec: TemplateSpec, card: EndCard, kit?: BrandKit 
     motionAssets,
     palette,
     endCardId: card.id,
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
     typeSystemIds: card.typeSystemId
       ? [...new Set([...(stripped.typeSystemIds ?? []), card.typeSystemId])]
-      : stripped.typeSystemIds,
+      : (stripped.typeSystemIds ?? []),
   };
 }
