@@ -66,10 +66,10 @@ export const DIMENSION_LABEL: Record<VariationDimension, string> = {
 export interface VariationContext {
   dimensions: VariationDimension[];
   counts: Partial<Record<VariationDimension, number>>;
-  brand?: BrandKit | null;
-  copy?: CopyKit | null;
-  blueprintIds?: string[];
-  seed?: number;
+  brand?: BrandKit | null | undefined;
+  copy?: CopyKit | null | undefined;
+  blueprintIds?: string[] | undefined;
+  seed?: number | undefined;
 }
 
 /* ------------------------------------------------------------ copy pools */

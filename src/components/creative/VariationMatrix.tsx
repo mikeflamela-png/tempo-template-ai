@@ -29,11 +29,11 @@ export interface VariationMatrixProps {
   base: TemplateSpec;
   media: MediaMap;
   textOverrides: Record<string, string>;
-  audio?: AudioTrack | null;
-  brand?: BrandKit | null;
-  copy?: CopyKit | null;
-  blueprintIds?: string[];
-  onSelect?: (spec: TemplateSpec) => void;
+  audio?: AudioTrack | null | undefined;
+  brand?: BrandKit | null | undefined;
+  copy?: CopyKit | null | undefined;
+  blueprintIds?: string[] | undefined;
+  onSelect?: (spec: TemplateSpec) => void | undefined;
 }
 
 export default function VariationMatrix({
@@ -210,8 +210,8 @@ function VariantCard({
   base: TemplateSpec;
   media: MediaMap;
   textOverrides: Record<string, string>;
-  audio?: AudioTrack | null;
-  onSelect?: (spec: TemplateSpec) => void;
+  audio?: AudioTrack | null | undefined;
+  onSelect?: (spec: TemplateSpec) => void | undefined;
 }) {
   const diff = useMemo(() => creativeDiff(base, spec), [base, spec]);
   const changed = diff.filter((d) => d.change === "changed");
