@@ -33,6 +33,7 @@ import { ExportDialog } from "@/components/editor/ExportDialog";
 import { MomentEditor } from "@/components/editor/MomentEditor";
 import VariationMatrix from "@/components/creative/VariationMatrix";
 import SwapMotion from "@/components/editor/SwapMotion";
+import TemplateAutopsy from "@/components/creative/TemplateAutopsy";
 import SafeAreas, { SAFE_AREAS, type Platform as SafePlatform } from "@/components/editor/SafeAreas";
 import { runTemplateQA } from "@/lib/template/qa";
 import FeedbackDialog from "@/components/taste/FeedbackDialog";
@@ -443,6 +444,16 @@ function EditorPage() {
               setSyncedSpec((prev) => (prev ? { ...prev, creativeEvents } : prev));
               setEdits((prev) => ({ ...prev, creativeEvents }));
             }}
+            onPatchSpec={(patch) => {
+              setSyncedSpec((prev) => (prev ? { ...prev, ...patch } : prev));
+              setEdits((prev) => ({ ...prev, ...patch }));
+            }}
+          />
+          <TemplateAutopsy
+            spec={spec}
+            media={previewMedia}
+            textOverrides={texts}
+            audio={audio}
           />
           <div>
             <h2 className="mb-2 text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
