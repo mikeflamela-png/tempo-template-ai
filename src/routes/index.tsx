@@ -126,6 +126,18 @@ function Index() {
   const [layoutComplexity, setLayoutComplexity] = useState(LAYOUT_COMPLEXITIES[1]!);
   const [risk, setRisk] = useState(4);
   const [showMore, setShowMore] = useState(false);
+  const brand = useBrandStore();
+  useBlueprints();
+  const [brandId, setBrandId] = useState<string | null>(null);
+  const [copyId, setCopyId] = useState<string | null>(null);
+  const [blueprintId, setBlueprintId] = useState<string | null>(null);
+  const [motionKey, setMotionKey] = useState<string | null>(null);
+  const [effectAmount, setEffectAmount] = useState(5);
+
+  const activeBrand = brandById(brandId ?? brand.activeKitId);
+  const activeCopy = copyKitById(copyId ?? brand.activeCopyId);
+  const warnings = fontWarnings(activeBrand);
+  const blueprints = allBlueprints();
 
   const opts: GenerateOptions = {
     prompt,
@@ -144,10 +156,19 @@ function Index() {
 
   const finish = (specs: TemplateSpec[]) => {
     const pack = stylePackByKey(packKey);
-    let out = pack ? specs.map((s) => applyStylePack(s, pack)) : specs;
+    const blueprint = blueprintById(blueprintId);
+    const motion = packByKey(motionKey);
+    let out = specs.map((s) => {
+      let spec = pack ? applyStylePack(s, pack) : s;
+      spec = applyBlueprint(spec, blueprint);
+      spec = applyMotionPack(spec, motion, effectAmount);
+      spec = applyBrand(spec, activeBrand, activeCopy);
+      return spec;
+    });
     if (musicFirst && audio?.beatMap) out = out.map((s) => syncSpecToTrack(s, audio, 0.7));
     return out;
   };
+
 
   const generate = () => {
     setBusy(true);
