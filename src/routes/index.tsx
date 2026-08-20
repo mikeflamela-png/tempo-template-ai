@@ -205,11 +205,18 @@ function Index() {
           </span>
           <div className="flex items-center gap-4">
             <Link
+              to="/brand"
+              className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground hover:text-foreground"
+            >
+              Brand kit
+            </Link>
+            <Link
               to="/library"
               className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground hover:text-foreground"
             >
               Creative library
             </Link>
+
             <PreviewReelControl compact />
           </div>
         </header>
