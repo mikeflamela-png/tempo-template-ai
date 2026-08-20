@@ -289,6 +289,112 @@ function Index() {
               )}
             </div>
 
+            <div className="mt-5 grid gap-5 border-t border-border pt-5 sm:grid-cols-2">
+              <div className="space-y-2">
+                <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
+                  Brand kit
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <Pill active={!activeBrand} onClick={() => setBrandId(null)}>
+                    None
+                  </Pill>
+                  {brand.kits.map((k) => (
+                    <Pill key={k.id} active={activeBrand?.id === k.id} onClick={() => setBrandId(k.id)}>
+                      {k.name}
+                    </Pill>
+                  ))}
+                  <Link
+                    to="/brand"
+                    className="rounded-full border border-dashed border-border px-3.5 py-1.5 text-sm text-muted-foreground hover:text-foreground"
+                  >
+                    + Manage
+                  </Link>
+                </div>
+                {warnings.map((w) => (
+                  <p key={w} className="text-xs text-destructive">
+                    {w}
+                  </p>
+                ))}
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
+                  Copy kit
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <Pill active={!activeCopy} onClick={() => setCopyId(null)}>
+                    Placeholder copy
+                  </Pill>
+                  {brand.copyKits.map((c) => (
+                    <Pill key={c.id} active={activeCopy?.id === c.id} onClick={() => setCopyId(c.id)}>
+                      {c.name} · {c.mode}
+                    </Pill>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-2 sm:col-span-2">
+                <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
+                  Blueprint
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <Pill active={!blueprintId} onClick={() => setBlueprintId(null)}>
+                    Let Tempo decide
+                  </Pill>
+                  {blueprints.map((b) => (
+                    <Pill
+                      key={b.id}
+                      active={blueprintId === b.id}
+                      onClick={() => setBlueprintId(b.id)}
+                      title={b.blurb}
+                    >
+                      {b.name}
+                    </Pill>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-2 sm:col-span-2">
+                <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
+                  Motion kit
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <Pill active={!motionKey} onClick={() => setMotionKey(null)}>
+                    Mixed
+                  </Pill>
+                  {MOTION_PACKS.map((p) => (
+                    <Pill
+                      key={p.key}
+                      active={motionKey === p.key}
+                      onClick={() => setMotionKey(p.key)}
+                      title={p.blurb}
+                    >
+                      {p.name}
+                    </Pill>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-2 sm:col-span-2">
+                <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
+                  Effect amount
+                </p>
+                <Slider
+                  value={[effectAmount]}
+                  min={0}
+                  max={10}
+                  step={1}
+                  onValueChange={(v) => setEffectAmount(v[0] ?? 5)}
+                />
+                <div className="flex justify-between text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+                  <span>Clean cuts</span>
+                  <span>Full treatment</span>
+                </div>
+              </div>
+            </div>
+
+
+
             <div className="mt-5 space-y-2 border-t border-border pt-5">
               <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
                 Style pack
