@@ -103,7 +103,13 @@ app.post("/render", upload.any(), async (req, res) => {
         textOverrides: job.textOverrides ?? {},
         audio,
       };
-      const composition = await selectComposition({ serveUrl, id: "tempo", inputProps });
+      const base = await selectComposition({ serveUrl, id: "tempo", inputProps });
+      // honour the export format chosen in the app (vertical / square / landscape)
+      const composition = {
+        ...base,
+        width: job.output?.width ?? base.width,
+        height: job.output?.height ?? base.height,
+      };
       const outputLocation = path.join(OUT, `${jobId}.mp4`);
       jobs.set(jobId, { state: "rendering", progress: 0.02 });
       await renderMedia({
