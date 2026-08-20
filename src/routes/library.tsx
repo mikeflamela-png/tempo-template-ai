@@ -4,6 +4,8 @@ import { ArrowLeft, FlaskConical, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { TemplateCard } from "@/components/TemplateCard";
+import { Workbench } from "@/components/creative/Workbench";
+import { RecipeBrowser, TechniqueBrowser } from "@/components/creative/TechniqueBrowser";
 import { LAYOUT_BOXES, LAYOUT_GROUPS } from "@/lib/template/layouts";
 import { GRAPHICS } from "@/lib/template/graphics";
 import { RHYTHMS } from "@/lib/template/rhythm";
@@ -36,6 +38,8 @@ export const Route = createFileRoute("/library")({
 });
 
 const TABS = [
+  "Techniques",
+  "Recipes",
   "Layouts",
   "Motion",
   "Transitions",
@@ -44,7 +48,7 @@ const TABS = [
   "Fonts",
   "Style packs",
   "Concepts",
-  "Creative Lab",
+  "Invention Lab",
 ] as const;
 
 function LayoutThumb({ layout }: { layout: Layout }) {
@@ -81,7 +85,7 @@ function Tile({ title, sub }: { title: string; sub?: string }) {
 }
 
 function LibraryPage() {
-  const [tab, setTab] = useState<(typeof TABS)[number]>("Layouts");
+  const [tab, setTab] = useState<(typeof TABS)[number]>("Techniques");
   const [prompt, setPrompt] = useState("");
   const [busy, setBusy] = useState(false);
   const { generated } = useTemplateStore();
@@ -137,6 +141,10 @@ function LibraryPage() {
             </button>
           ))}
         </div>
+
+        {tab === "Techniques" && <TechniqueBrowser />}
+
+        {tab === "Recipes" && <RecipeBrowser />}
 
         {tab === "Layouts" && (
           <div className="space-y-10">
@@ -254,33 +262,33 @@ function LibraryPage() {
           </div>
         )}
 
-        {tab === "Creative Lab" && (
-          <div className="space-y-8">
-            <div className="rounded-2xl border border-border bg-card/60 p-4">
-              <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
-                Editing experiment
-              </p>
-              <Textarea
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                placeholder="e.g. cut only on the downbeat, hold one frame for a full second, then a giant word"
-                className="mt-3 min-h-24 resize-none"
-              />
-              <Button onClick={runExperiment} disabled={busy} className="mt-4">
-                {busy ? <Loader2 className="size-4 animate-spin" /> : <FlaskConical className="size-4" />}
-                Run experiment
-              </Button>
-              <p className="mt-2 text-[11px] text-muted-foreground">
-                Experiments run at max creative risk and are saved into your template library.
-              </p>
-            </div>
-            {experimentSpecs.length > 0 && (
-              <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-3">
-                {experimentSpecs.map((s) => (
-                  <TemplateCard key={s.id} spec={s} />
-                ))}
+        {tab === "Invention Lab" && (
+          <div className="space-y-10">
+            <Workbench />
+            <div>
+              <h2 className="mb-3 text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
+                Full-template experiments
+              </h2>
+              <div className="rounded-2xl border border-border bg-card/60 p-4">
+                <Textarea
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  placeholder="e.g. cut only on the downbeat, hold one frame for a full second, then a giant word"
+                  className="min-h-20 resize-none"
+                />
+                <Button onClick={runExperiment} disabled={busy} className="mt-3">
+                  {busy ? <Loader2 className="size-4 animate-spin" /> : <FlaskConical className="size-4" />}
+                  Run template experiment
+                </Button>
               </div>
-            )}
+              {experimentSpecs.length > 0 && (
+                <div className="mt-6 grid gap-10 sm:grid-cols-2 lg:grid-cols-3">
+                  {experimentSpecs.map((s) => (
+                    <TemplateCard key={s.id} spec={s} />
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>
