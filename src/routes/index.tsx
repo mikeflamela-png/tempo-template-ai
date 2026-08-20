@@ -4,6 +4,8 @@ import { Loader2, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { TemplateCard } from "@/components/TemplateCard";
+import { PreviewReelControl } from "@/components/PreviewReelControl";
+import { Slider } from "@/components/ui/slider";
 import { BASE_TEMPLATES } from "@/lib/template/library";
 import {
   COMPLEXITIES,
@@ -11,8 +13,14 @@ import {
   ENERGIES,
   FORMATS,
   PLATFORMS,
+  AESTHETICS,
+  PACINGS,
+  TYPOGRAPHY_LEVELS,
+  TRANSITION_INTENSITIES,
+  LAYOUT_COMPLEXITIES,
   generateTemplates,
   regenerateSimilar,
+  remixTemplate,
   type GenerateOptions,
 } from "@/lib/template/generate";
 import { addGenerated, useTemplateStore } from "@/lib/template/store";
@@ -99,8 +107,28 @@ function Index() {
   const [complexity, setComplexity] = useState(COMPLEXITIES[1]!);
   const [busy, setBusy] = useState(false);
   const [category, setCategory] = useState("All");
+  const [aesthetic, setAesthetic] = useState(AESTHETICS[0]!);
+  const [pacing, setPacing] = useState(PACINGS[1]!);
+  const [typography, setTypography] = useState(TYPOGRAPHY_LEVELS[2]!);
+  const [transitionIntensity, setTransitionIntensity] = useState(TRANSITION_INTENSITIES[2]!);
+  const [layoutComplexity, setLayoutComplexity] = useState(LAYOUT_COMPLEXITIES[1]!);
+  const [risk, setRisk] = useState(4);
+  const [showMore, setShowMore] = useState(false);
 
-  const opts: GenerateOptions = { prompt, platform, duration, format, energy, complexity };
+  const opts: GenerateOptions = {
+    prompt,
+    platform,
+    duration,
+    format,
+    energy,
+    complexity,
+    aesthetic,
+    pacing,
+    typography,
+    transitionIntensity,
+    layoutComplexity,
+    risk,
+  };
 
   const generate = () => {
     setBusy(true);
@@ -112,7 +140,12 @@ function Index() {
   };
 
   const similar = (spec: TemplateSpec) => {
-    addGenerated(regenerateSimilar(spec, { ...opts, prompt: prompt || EXAMPLE }, 5));
+    addGenerated(regenerateSimilar(spec, { ...opts, prompt: prompt || EXAMPLE }, 4));
+    document.getElementById("results")?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  const remix = (spec: TemplateSpec) => {
+    addGenerated(remixTemplate(spec, { ...opts, prompt: prompt || EXAMPLE }, 4));
     document.getElementById("results")?.scrollIntoView({ behavior: "smooth" });
   };
 
@@ -130,9 +163,7 @@ function Index() {
           <span className="display-tight text-lg tracking-tight">
             TEMPLATE<span className="text-primary">LAB</span>
           </span>
-          <span className="text-xs uppercase tracking-[0.25em] text-muted-foreground">
-            template engine v1
-          </span>
+          <PreviewReelControl compact />
         </header>
 
         <section className="mx-auto max-w-3xl px-6 pb-16 pt-10 text-center">
@@ -163,6 +194,50 @@ function Index() {
                 />
               </div>
             </div>
+            <div className="mt-5 border-t border-border pt-4">
+              <button
+                onClick={() => setShowMore((v) => !v)}
+                className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground transition-colors hover:text-foreground"
+              >
+                {showMore ? "− Hide direction controls" : "+ Direction controls"}
+              </button>
+              {showMore && (
+                <div className="mt-5 grid gap-5 sm:grid-cols-2">
+                  <div className="sm:col-span-2">
+                    <Chips label="Aesthetic" options={AESTHETICS} value={aesthetic} onChange={setAesthetic} />
+                  </div>
+                  <Chips label="Pacing" options={PACINGS} value={pacing} onChange={setPacing} />
+                  <Chips label="Typography" options={TYPOGRAPHY_LEVELS} value={typography} onChange={setTypography} />
+                  <Chips
+                    label="Transition intensity"
+                    options={TRANSITION_INTENSITIES}
+                    value={transitionIntensity}
+                    onChange={setTransitionIntensity}
+                  />
+                  <Chips
+                    label="Layout complexity"
+                    options={LAYOUT_COMPLEXITIES}
+                    value={layoutComplexity}
+                    onChange={setLayoutComplexity}
+                  />
+                  <div className="sm:col-span-2 space-y-2">
+                    <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
+                      Creative risk
+                    </p>
+                    <Slider value={[risk]} min={1} max={10} step={1} onValueChange={(v) => setRisk(v[0] ?? 4)} />
+                    <div className="flex justify-between text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+                      <span>Safe</span>
+                      <span>Weird</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="mt-5">
+              <PreviewReelControl />
+            </div>
+
             <Button
               onClick={generate}
               disabled={busy}
@@ -180,7 +255,7 @@ function Index() {
           <h2 className="display-tight mb-8 text-2xl">Generated concepts</h2>
           <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-4">
             {generated.slice(0, 12).map((spec) => (
-              <TemplateCard key={spec.id} spec={spec} onRegenerate={similar} />
+              <TemplateCard key={spec.id} spec={spec} onRegenerate={similar} onRemix={remix} />
             ))}
           </div>
         </section>
@@ -208,7 +283,7 @@ function Index() {
         ) : (
           <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-4">
             {library.map((spec) => (
-              <TemplateCard key={spec.id} spec={spec} onRegenerate={similar} />
+              <TemplateCard key={spec.id} spec={spec} onRegenerate={similar} onRemix={remix} />
             ))}
           </div>
         )}

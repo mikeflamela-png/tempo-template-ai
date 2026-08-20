@@ -1,15 +1,18 @@
 import { useSyncExternalStore } from "react";
 import type { TemplateSpec } from "./types";
 import { BASE_TEMPLATES } from "./library";
+import type { PreviewReel } from "./reel";
 
 const KEY = "template-lab:v1";
 
 interface State {
   generated: TemplateSpec[];
   saved: string[];
+  /** object-URL backed, session only */
+  reel: PreviewReel | null;
 }
 
-let state: State = { generated: [], saved: [] };
+let state: State = { generated: [], saved: [], reel: null };
 let hydrated = false;
 const listeners = new Set<() => void>();
 
@@ -18,7 +21,10 @@ function hydrate() {
   hydrated = true;
   try {
     const raw = window.localStorage.getItem(KEY);
-    if (raw) state = { ...state, ...(JSON.parse(raw) as State) };
+    if (raw) {
+      const parsed = JSON.parse(raw) as Partial<State>;
+      state = { ...state, generated: parsed.generated ?? [], saved: parsed.saved ?? [] };
+    }
   } catch {
     /* ignore */
   }
@@ -28,7 +34,10 @@ function commit(next: State) {
   state = next;
   if (typeof window !== "undefined") {
     try {
-      window.localStorage.setItem(KEY, JSON.stringify(state));
+      window.localStorage.setItem(
+        KEY,
+        JSON.stringify({ generated: state.generated, saved: state.saved }),
+      );
     } catch {
       /* ignore */
     }
@@ -36,7 +45,7 @@ function commit(next: State) {
   listeners.forEach((l) => l());
 }
 
-const emptySnapshot: State = { generated: [], saved: [] };
+const emptySnapshot: State = { generated: [], saved: [], reel: null };
 
 export function useTemplateStore() {
   hydrate();
@@ -65,6 +74,23 @@ export function toggleSaved(id: string) {
     ? state.saved.filter((s) => s !== id)
     : [...state.saved, id];
   commit({ ...state, saved });
+}
+
+export function setReel(reel: PreviewReel | null) {
+  hydrate();
+  if (state.reel && state.reel.url !== reel?.url) {
+    try {
+      URL.revokeObjectURL(state.reel.url);
+    } catch {
+      /* ignore */
+    }
+  }
+  commit({ ...state, reel });
+}
+
+export function getReel() {
+  hydrate();
+  return state.reel;
 }
 
 export function allTemplates(): TemplateSpec[] {

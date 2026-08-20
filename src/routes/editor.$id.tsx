@@ -8,7 +8,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { TemplatePlayer } from "@/components/video/TemplatePlayer";
-import { findTemplate } from "@/lib/template/store";
+import { findTemplate, useTemplateStore } from "@/lib/template/store";
+import { PreviewReelControl } from "@/components/PreviewReelControl";
+import { reelMediaFor } from "@/lib/template/reel";
+import { FONTS, FONT_CATEGORIES, fontByKey } from "@/lib/template/fonts";
 import type { MediaAssignment, MediaMap, TemplateSpec } from "@/lib/template/types";
 
 export const Route = createFileRoute("/editor/$id")({
@@ -39,7 +42,13 @@ interface LibraryItem {
 
 function EditorPage() {
   const { id } = useParams({ from: "/editor/$id" });
-  const spec = useMemo<TemplateSpec | undefined>(() => findTemplate(id), [id]);
+  const found = useMemo<TemplateSpec | undefined>(() => findTemplate(id), [id]);
+  const { reel } = useTemplateStore();
+  const [fontKey, setFontKey] = useState<string | null>(null);
+  const spec = useMemo<TemplateSpec | undefined>(
+    () => (found ? (fontKey ? { ...found, fontKey } : found) : undefined),
+    [found, fontKey],
+  );
   const [library, setLibrary] = useState<LibraryItem[]>([]);
   const [media, setMedia] = useState<MediaMap>({});
   const [texts, setTexts] = useState<Record<string, string>>({});
@@ -60,6 +69,11 @@ function EditorPage() {
     if (items.length === 0) return;
     setLibrary((prev) => [...prev, ...items]);
   }, []);
+
+  const previewMedia: MediaMap = useMemo(
+    () => (spec ? { ...reelMediaFor(spec, reel), ...media } : media),
+    [spec, reel, media],
+  );
 
   if (!spec) {
     return (
@@ -144,9 +158,12 @@ function EditorPage() {
             </p>
           </div>
         </div>
-        <Button onClick={exportProject} className="font-semibold">
-          <Download className="size-4" /> Export MP4
-        </Button>
+        <div className="flex items-center gap-3">
+          <PreviewReelControl compact />
+          <Button onClick={exportProject} className="font-semibold">
+            <Download className="size-4" /> Export MP4
+          </Button>
+        </div>
       </header>
 
       <div className="grid flex-1 gap-0 lg:grid-cols-[260px_1fr_340px]">
@@ -207,7 +224,7 @@ function EditorPage() {
             <TemplatePlayer
               ref={playerRef}
               spec={spec}
-              media={media}
+              media={previewMedia}
               textOverrides={texts}
               controls
               loop
@@ -220,6 +237,30 @@ function EditorPage() {
 
         {/* Slots + text */}
         <aside className="max-h-[calc(100vh-57px)] space-y-6 overflow-y-auto border-l border-border p-4">
+          <div>
+            <h2 className="mb-3 text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
+              Typography
+            </h2>
+            <select
+              value={fontKey ?? found?.fontKey ?? FONTS[0]!.key}
+              onChange={(e) => setFontKey(e.target.value)}
+              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+            >
+              {FONT_CATEGORIES.map((cat) => (
+                <optgroup key={cat} label={cat}>
+                  {FONTS.filter((f) => f.category === cat).map((f) => (
+                    <option key={f.key} value={f.key}>
+                      {f.name}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+            <p className="mt-2 text-[11px] text-muted-foreground">
+              {fontByKey(spec.fontKey).category} · changes every text moment in the template
+            </p>
+          </div>
+
           <div>
             <h2 className="mb-3 text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
               Replace media
@@ -252,7 +293,7 @@ function EditorPage() {
                           )
                         ) : (
                           <span className="flex size-full items-center justify-center text-[9px] text-muted-foreground">
-                            drop
+                            {reel ? "reel" : "drop"}
                           </span>
                         )}
                       </div>
