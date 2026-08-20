@@ -204,7 +204,7 @@ function mutateMotionKit(spec: TemplateSpec, rng: Rng): TemplateSpec {
       : s,
   );
   const creativeEvents = spec.creativeEvents?.map((e) => ({ ...e, seed: Math.floor(rng() * 1e6) }));
-  return { ...spec, mediaSlots, creativeEvents };
+  return creativeEvents ? { ...spec, mediaSlots, creativeEvents } : { ...spec, mediaSlots };
 }
 
 /** Reassigns motion asset placements/order without touching the shot spine. */
