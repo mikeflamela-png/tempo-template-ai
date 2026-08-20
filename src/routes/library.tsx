@@ -143,7 +143,7 @@ function LibraryPage() {
             {Object.entries(LAYOUT_GROUPS).map(([group, layouts]) => (
               <section key={group}>
                 <h2 className="mb-3 text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
-                  {group}
+                  {group.replace(/([a-z])([A-Z])/g, "$1 $2")}
                 </h2>
                 <Grid>
                   {(layouts as readonly Layout[]).map((l) => (
