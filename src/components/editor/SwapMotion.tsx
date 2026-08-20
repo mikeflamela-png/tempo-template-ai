@@ -120,9 +120,10 @@ function buildAlternatives(treatment: Treatment, spec: TemplateSpec, seed: numbe
   });
 
   const assetPool = pickAssetsForSlot({ count: 24, rng: Math.random }).filter((a) => a.quality !== "retired");
-  // favour core assets: sort core first, keep some specialty in the mix
+  // favour approved material: premium first, then core, then supporting
   const sortedAssets = [...assetPool].sort((a, b) => {
-    const w = (x: MotionAsset) => (x.quality === "core" ? 0 : x.quality === "specialty" ? 1 : 2);
+    const w = (x: MotionAsset) =>
+      x.quality === "premium" ? 0 : x.quality === "core" ? 1 : x.quality === "supporting" ? 2 : 3;
     return w(a) - w(b);
   });
 
