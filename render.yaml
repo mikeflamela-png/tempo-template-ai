@@ -1,0 +1,21 @@
+# One-click deploy of the Tempo render worker on Render.com.
+#
+#   1. Push this repo to GitHub
+#   2. render.com → New → Blueprint → pick this repo → Apply
+#   3. Copy the service URL, paste it into Tempo → Settings → Rendering
+#
+# Nothing else to configure: the Dockerfile installs Chromium + ffmpeg and
+# PUBLIC_URL is filled in automatically from the service's own hostname.
+services:
+  - type: web
+    name: tempo-render-worker
+    runtime: docker
+    plan: standard # 2 CPU / 4 GB — Chromium rendering needs the headroom
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: PORT
+        value: 8787
+      - key: RENDER_CONCURRENCY
+        value: 2

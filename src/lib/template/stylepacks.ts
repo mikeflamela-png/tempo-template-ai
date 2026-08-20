@@ -1,4 +1,5 @@
-import type { OverlayType, Palette, TemplateSpec, TextStyleName } from "./types";
+import type { OverlayType, Palette, TemplateSpec, TextStyleName, Transition } from "./types";
+import { styleProfileFor, type StyleProfile } from "./styleprofiles";
 
 export interface StylePack {
   key: string;
@@ -100,25 +101,58 @@ export const STYLE_PACKS: StylePack[] = [
 export const stylePackByKey = (key?: string | null) =>
   STYLE_PACKS.find((p) => p.key === key) ?? null;
 
-/** Re-skins a generated template so a batch reads as one coherent collection. */
-export function applyStylePack(spec: TemplateSpec, pack: StylePack): TemplateSpec {
-  const styles = pack.textStyles;
-  return {
-    ...spec,
-    palette: pack.palette,
-    fontKey: pack.fontKey,
-    tags: [...new Set([...spec.tags, pack.name])],
-    textSlots: spec.textSlots.map((t, i) => ({
-      ...t,
-      style: styles[i % styles.length] ?? t.style,
-    })),
-    overlays: [
-      ...spec.overlays.filter((o) => pack.overlays.includes(o.type)),
-      ...pack.overlays.slice(0, 3).map((type, i) => ({
+/**
+ * Re-skins a generated template so a batch reads as one coherent collection.
+ *
+ * Beyond palette/font/tags, this now applies the style's full creative
+ * profile (looked up automatically from `pack.key` unless one is passed
+ * explicitly): it swaps transitions toward the profile's preferred set,
+ * strips overlays the style discourages, and folds the color grade into
+ * `tags` (the spec has no first-class grade field) so downstream consumers
+ * — and QA — can see which style actually shaped the edit.
+ */
+export function applyStylePack(
+  spec: TemplateSpec,
+  pack: StylePack,
+  profile: StyleProfile | null = styleProfileFor(pack.key),
+): TemplateSpec {
+  const styles = profile?.textStyles.length ? profile.textStyles : pack.textStyles;
+  const preferredOverlays = profile?.overlays.length ? profile.overlays : pack.overlays;
+  const discouragedOverlays = new Set(profile?.discouragedOverlays ?? []);
+  const preferredTransitions = profile?.transitions;
+
+  const mediaSlots = preferredTransitions?.length
+    ? spec.mediaSlots.map((s, i) => {
+        if (!s.transitionOut || s.transitionOut === "hard_cut") return s;
+        if (preferredTransitions.includes(s.transitionOut)) return s;
+        return { ...s, transitionOut: preferredTransitions[i % preferredTransitions.length] as Transition };
+      })
+    : spec.mediaSlots;
+
+  const overlays = [
+    ...spec.overlays.filter(
+      (o) => !discouragedOverlays.has(o.type) && preferredOverlays.includes(o.type),
+    ),
+    ...preferredOverlays
+      .filter((type) => !discouragedOverlays.has(type))
+      .slice(0, 3)
+      .map((type, i) => ({
         type,
         start: i === 0 ? 0 : spec.duration * 0.02,
         duration: spec.duration,
       })),
-    ],
+  ];
+
+  return {
+    ...spec,
+    palette: pack.palette,
+    fontKey: profile?.fontKey ?? pack.fontKey,
+    tags: [...new Set([...spec.tags, pack.name, `grade:${pack.grade}`, `pacing:${profile?.pacing ?? "precise"}`])],
+    textSlots: spec.textSlots.map((t, i) => ({
+      ...t,
+      style: styles[i % styles.length] ?? t.style,
+    })),
+    mediaSlots,
+    overlays,
   };
 }

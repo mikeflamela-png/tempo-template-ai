@@ -34,6 +34,7 @@ import { endCardById } from "@/lib/brand/endcards";
 import { typeSystemsForBrand } from "@/lib/brand/typesystems";
 import { motionAssetById } from "@/lib/motion/assets";
 import { runPreflight, type PreflightIssue } from "@/lib/render/preflight";
+import { buildRenderBundle } from "@/lib/render/bundle";
 import type { AudioTrack, MediaMap, TemplateSpec } from "@/lib/template/types";
 
 interface Props {
@@ -145,49 +146,43 @@ export function ExportDialog({ spec, media, textOverrides, audio }: Props) {
 
   const start = useCallback(async () => {
     if (!canRender) return;
-    setStatus({ stage: "preparing", progress: 3, message: "Preparing composition…" });
+    setStatus({ stage: "preparing", progress: 3, message: "Preparing your video…" });
     setNotConfigured(false);
     const payload = job();
     payload.output.crf = QUALITIES.find((q) => q.key === quality)!.crf;
 
     try {
-      // Ship the full-resolution source clips with the job — the worker never
-      // sees the browser's blob URLs.
-      const form = new FormData();
-      const entries = Object.entries(media);
-      let done = 0;
-      for (const [slotId, asset] of entries) {
-        const blob = await fetch(asset.url).then((r) => r.blob());
-        form.append(`media:${slotId}`, blob, asset.name || slotId);
-        done += 1;
-        setStatus({
-          stage: "uploading",
-          progress: Math.round((done / Math.max(1, entries.length)) * 25),
-          message: `Uploading full-resolution sources… ${done}/${entries.length}`,
-        });
-      }
-      if (audio?.url) {
-        const ab = await fetch(audio.url).then((r) => r.blob());
-        form.append("audio", ab, audio.name || "audio");
-      }
-      form.append("job", JSON.stringify(payload));
+      // Everything the Player uses lives in the browser: clips, music, imported
+      // motion assets, brand logos and uploaded fonts. All of it ships with the
+      // job so the renderer can reproduce the preview exactly.
+      const bundle = await buildRenderBundle({
+        spec,
+        media,
+        audio,
+        brand,
+        onProgress: (fraction, label) =>
+          setStatus({
+            stage: "uploading",
+            progress: 3 + Math.round(fraction * 22),
+            message: `Collecting ${label}…`,
+          }),
+      });
+      payload.assetMeta = bundle.assetMeta;
+      payload.fonts = bundle.fonts;
+      bundle.form.append("job", JSON.stringify(payload));
 
-      setStatus({ stage: "uploading", progress: 28, message: "Submitting render job…" });
-      const res = await fetch("/api/public/render", { method: "POST", body: form });
+      setStatus({ stage: "uploading", progress: 28, message: "Sending to the renderer…" });
+      const res = await fetch("/api/public/render", { method: "POST", body: bundle.form });
       const data = (await res.json()) as { configured: boolean; jobId?: string; error?: string };
       if (!data.configured) {
         setNotConfigured(true);
-        setStatus({
-          stage: "error",
-          progress: 0,
-          message: "No render service connected.",
-        });
+        setStatus({ stage: "error", progress: 0, message: "No render service connected." });
         return;
       }
       if (!res.ok || !data.jobId) throw new Error(data.error ?? "Render worker rejected the job");
 
       const jobId = data.jobId;
-      setStatus({ stage: "queued", progress: 30, message: "Queued on the render service…" });
+      setStatus({ stage: "queued", progress: 30, message: "Queued…" });
       const poll = async () => {
         const s = (await fetch(`/api/public/render-status/${jobId}`).then((r) => r.json())) as {
           state?: string;
@@ -199,7 +194,7 @@ export function ExportDialog({ spec, media, textOverrides, audio }: Props) {
           setStatus({
             stage: "done",
             progress: 100,
-            message: "Complete — H.264 MP4 ready",
+            message: "Your video is ready",
             downloadUrl: s.url,
           });
           return;
@@ -214,10 +209,10 @@ export function ExportDialog({ spec, media, textOverrides, audio }: Props) {
           progress: 30 + Math.round(p * 68),
           message:
             s.state === "queued"
-              ? "Queued on the render service…"
+              ? "Queued…"
               : p > 0.97
-                ? "Encoding H.264…"
-                : "Rendering frames…",
+                ? "Encoding"
+                : `Rendering ${Math.round(p * 100)}%`,
         });
         timer.current = window.setTimeout(() => void poll(), 1200);
       };
@@ -230,7 +225,7 @@ export function ExportDialog({ spec, media, textOverrides, audio }: Props) {
       });
       toast.error("Export failed");
     }
-  }, [canRender, job, media, audio, quality]);
+  }, [canRender, job, spec, media, audio, brand, quality]);
 
   const active =
     status.stage === "preparing" ||
@@ -290,7 +285,7 @@ export function ExportDialog({ spec, media, textOverrides, audio }: Props) {
   return (
     <>
       <Button onClick={() => setOpen(true)} className="font-semibold">
-        <Download className="size-4" /> Export MP4
+        <Download className="size-4" /> Export video
       </Button>
       <Dialog
         open={open}
@@ -301,12 +296,9 @@ export function ExportDialog({ spec, media, textOverrides, audio }: Props) {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>
-              Export · {fmt.width}×{fmt.height} H.264
-            </DialogTitle>
+            <DialogTitle>Export video</DialogTitle>
             <DialogDescription>
-              {spec.duration.toFixed(1)}s · {spec.fps}fps · {spec.mediaSlots.length} shots ·{" "}
-              {(spec.creativeEvents ?? []).length} creative moments
+              {fmt.label} · {fmt.width}×{fmt.height} · {spec.duration.toFixed(1)}s
             </DialogDescription>
           </DialogHeader>
 
@@ -389,7 +381,7 @@ export function ExportDialog({ spec, media, textOverrides, audio }: Props) {
             {status.stage === "idle" ? (
               <Button className="w-full font-semibold" disabled={!canRender} onClick={() => void start()}>
                 <Download className="size-4" />
-                {blockingIssues.length > 0 ? "Fix blocking issues to render" : "Render MP4"}
+                {blockingIssues.length > 0 ? "Fix the issues above first" : "Render"}
               </Button>
             ) : (
               <>
@@ -399,15 +391,9 @@ export function ExportDialog({ spec, media, textOverrides, audio }: Props) {
                     style={{ width: `${status.stage === "error" ? 0 : status.progress}%` }}
                   />
                 </div>
-                <p className="flex items-start gap-2 text-sm text-muted-foreground">
-                  {active && <Loader2 className="mt-0.5 size-4 shrink-0 animate-spin" />}
-                  <span>
-                    <span className="uppercase tracking-widest text-[10px] text-foreground">
-                      {status.stage}
-                    </span>{" "}
-                    {status.stage === "rendering" ? `${status.progress}% — ` : ""}
-                    {status.message}
-                  </span>
+                <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                  {active && <Loader2 className="size-4 shrink-0 animate-spin" />}
+                  <span>{status.message}</span>
                 </p>
               </>
             )}

@@ -237,6 +237,12 @@ export function brandById(id?: string | null) {
   return state.kits.find((k) => k.id === id);
 }
 
+/** All brand kits — used by asset resolution and export bundling. */
+export function brandKits(): BrandKit[] {
+  hydrate();
+  return state.kits;
+}
+
 export function copyKitById(id?: string | null) {
   hydrate();
   return state.copyKits.find((k) => k.id === id);

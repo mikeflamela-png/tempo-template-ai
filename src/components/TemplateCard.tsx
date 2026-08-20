@@ -1,13 +1,22 @@
 import { useMemo, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import type { PlayerRef } from "@remotion/player";
-import { Bookmark, BookmarkCheck, Dna, Play, Shuffle, Sparkles } from "lucide-react";
+import {
+  Bookmark,
+  BookmarkCheck,
+  Heart,
+  Play,
+  Shuffle,
+  ThumbsDown,
+  ThumbsUp,
+} from "lucide-react";
 import { TemplatePlayer } from "@/components/video/TemplatePlayer";
 import { Button } from "@/components/ui/button";
 import type { TemplateSpec } from "@/lib/template/types";
 import { toggleSaved, useTemplateStore } from "@/lib/template/store";
 import { reelMediaFor, reelSegments } from "@/lib/template/reel";
 import { fontByKey } from "@/lib/template/fonts";
+import { recordFeedback } from "@/lib/taste/profile";
 
 export function TemplateCard({
   spec,
@@ -21,12 +30,15 @@ export function TemplateCard({
   const ref = useRef<PlayerRef>(null);
   const [playing, setPlaying] = useState(false);
   const [dna, setDna] = useState(false);
+  const [reasonsOpen, setReasonsOpen] = useState(false);
+  const [feedback, setFeedback] = useState<"love" | "good" | "bad" | null>(null);
   const { saved, reel } = useTemplateStore();
   const isSaved = saved.includes(spec.id);
   const media = useMemo(() => reelMediaFor(spec, reel), [spec, reel]);
   const segments = useMemo(() => (reel ? reelSegments(spec, reel).slice(0, 4) : []), [spec, reel]);
   const font = fontByKey(spec.fontKey);
   const d = spec.direction;
+  const description = d?.creativeIdea ?? spec.creativeProfile.family;
 
   const toggle = () => {
     const p = ref.current;
@@ -38,6 +50,28 @@ export function TemplateCard({
       p.play();
       setPlaying(true);
     }
+  };
+
+  const love = () => {
+    setFeedback("love");
+    setReasonsOpen(false);
+    recordFeedback({ targetId: spec.id, kind: "love", tags: [] });
+  };
+
+  const good = () => {
+    setFeedback("good");
+    setReasonsOpen(false);
+    recordFeedback({ targetId: spec.id, kind: "love", tags: ["good"] });
+  };
+
+  const bad = () => {
+    setFeedback("bad");
+    setReasonsOpen((v) => !v);
+  };
+
+  const pickReason = (tag: string) => {
+    recordFeedback({ targetId: spec.id, kind: "dislike", tags: [tag] });
+    setReasonsOpen(false);
   };
 
   return (
@@ -83,27 +117,88 @@ export function TemplateCard({
 
       <div className="space-y-1">
         <h3 className="display-tight text-xl">{spec.name}</h3>
-        <p className="text-xs uppercase tracking-widest text-muted-foreground">
-          {spec.duration}s · {spec.mediaSlots.length} media slots · {spec.textSlots.length} text moments
-        </p>
-        {d && <p className="line-clamp-2 text-xs text-muted-foreground/80">{d.creativeIdea}</p>}
+        <p className="line-clamp-1 text-xs text-muted-foreground/80">{description}</p>
       </div>
 
       <div className="flex gap-2">
         <Button asChild className="flex-1 font-semibold">
           <Link to="/editor/$id" params={{ id: spec.id }}>
-            Use Template
+            Use This
           </Link>
         </Button>
-        <Button
-          variant="secondary"
-          size="icon"
-          onClick={() => setDna((v) => !v)}
-          aria-label="View DNA"
-        >
-          <Dna className="size-4" />
+        {onRegenerate && (
+          <Button
+            variant="secondary"
+            size="icon"
+            onClick={() => onRegenerate(spec)}
+            aria-label="Make another like this"
+            title="Make another like this"
+          >
+            <Shuffle className="size-4" />
+          </Button>
+        )}
+        <Button variant="secondary" size="sm" onClick={() => setDna((v) => !v)}>
+          Details
         </Button>
       </div>
+
+      <div className="flex items-center gap-1.5">
+        <button
+          onClick={love}
+          aria-label="Love this"
+          className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
+            feedback === "love"
+              ? "border-primary bg-primary/10 text-primary"
+              : "border-border text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <Heart className="mr-1 inline size-3.5" /> Love
+        </button>
+        <button
+          onClick={good}
+          aria-label="Good"
+          className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
+            feedback === "good"
+              ? "border-primary bg-primary/10 text-primary"
+              : "border-border text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <ThumbsUp className="mr-1 inline size-3.5" /> Good
+        </button>
+        <button
+          onClick={bad}
+          aria-label="Bad"
+          className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
+            feedback === "bad"
+              ? "border-destructive bg-destructive/10 text-destructive"
+              : "border-border text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <ThumbsDown className="mr-1 inline size-3.5" /> Bad
+        </button>
+      </div>
+
+      {reasonsOpen && (
+        <div className="animate-fade-in flex flex-wrap gap-1.5 rounded-xl border border-border bg-card/60 p-3">
+          {[
+            "Too Busy",
+            "Too Boring",
+            "Too AI-looking",
+            "Too Geometric",
+            "Bad Typography",
+            "Bad Motion",
+            "Not On Brand",
+          ].map((tag) => (
+              <button
+                key={tag}
+                onClick={() => pickReason(tag)}
+                className="rounded-full border border-border px-2.5 py-1 text-[11px] text-muted-foreground transition-colors hover:border-foreground/40 hover:text-foreground"
+              >
+                {tag}
+              </button>
+            ))}
+        </div>
+      )}
 
       {dna && (
         <div className="animate-fade-in space-y-3 rounded-xl border border-border bg-card/60 p-4 text-xs">
@@ -128,24 +223,23 @@ export function TemplateCard({
               <Row k="Structure" v={spec.creativeProfile.structure} />
             </>
           )}
+          <Row
+            k="Slots"
+            v={`${spec.duration}s · ${spec.mediaSlots.length} media · ${spec.textSlots.length} text`}
+          />
           {segments.length > 0 && (
             <Row
               k="Reel sections"
               v={segments.map((s) => `${s.from.toFixed(1)}–${s.to.toFixed(1)}s`).join(" · ")}
             />
           )}
-          <div className="flex gap-2 pt-1">
-            {onRegenerate && (
-              <Button size="sm" variant="secondary" className="flex-1" onClick={() => onRegenerate(spec)}>
-                <Sparkles className="size-3.5" /> Generate Similar
-              </Button>
-            )}
-            {onRemix && (
+          {onRemix && (
+            <div className="flex gap-2 pt-1">
               <Button size="sm" variant="secondary" className="flex-1" onClick={() => onRemix(spec)}>
                 <Shuffle className="size-3.5" /> Remix
               </Button>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       )}
     </div>

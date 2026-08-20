@@ -37,7 +37,9 @@ fs.mkdirSync(OUT, { recursive: true });
 
 const PORT = Number(process.env.PORT ?? 8787);
 const TOKEN = process.env.REMOTION_WORKER_TOKEN ?? "";
-const PUBLIC_URL = process.env.PUBLIC_URL ?? `http://localhost:${PORT}`;
+// Render.com (and most PaaS) inject the public URL for us — no manual config.
+const PUBLIC_URL =
+  process.env.PUBLIC_URL ?? process.env.RENDER_EXTERNAL_URL ?? `http://localhost:${PORT}`;
 
 const app = express();
 app.use(cors());
@@ -53,7 +55,14 @@ function getBundle() {
   if (!bundlePromise) {
     bundlePromise = bundle({
       entryPoint: path.join(ROOT, "src/remotion/index.ts"),
-      webpackOverride: (c) => c,
+      // the app resolves "@/..." through tsconfig paths; webpack needs it spelled out
+      webpackOverride: (c) => ({
+        ...c,
+        resolve: {
+          ...c.resolve,
+          alias: { ...(c.resolve?.alias ?? {}), "@": path.join(ROOT, "src") },
+        },
+      }),
     });
   }
   return bundlePromise;
@@ -90,6 +99,29 @@ app.post("/render", upload.any(), async (req, res) => {
     audio = { ...job.audio, url: `${PUBLIC_URL}/assets/${path.basename(byField["audio"].path)}` };
   }
 
+  // Imported motion assets, brand logos/product shots and uploaded brand fonts
+  // arrive as `asset:<id>` / `font:<id>` parts — the render machine has no
+  // access to the browser stores they normally come from.
+  const assetUrls = {};
+  const fontFaces = [];
+  for (const [field, file] of Object.entries(byField)) {
+    const url = `${PUBLIC_URL}/assets/${path.basename(file.path)}`;
+    if (field.startsWith("asset:")) {
+      const id = field.slice("asset:".length);
+      const meta = job.assetMeta?.[id] ?? {};
+      assetUrls[id] = {
+        url,
+        kind: meta.kind ?? "image",
+        ...(meta.loop ? { loop: true } : {}),
+        ...(meta.speed ? { speed: meta.speed } : {}),
+      };
+    } else if (field.startsWith("font:")) {
+      const key = field.slice("font:".length);
+      const meta = (job.fonts ?? []).find((f) => f.key === key);
+      if (meta) fontFaces.push({ key, family: meta.family, url });
+    }
+  }
+
   const jobId = randomUUID();
   jobs.set(jobId, { state: "queued", progress: 0 });
   res.json({ jobId });
@@ -102,8 +134,17 @@ app.post("/render", upload.any(), async (req, res) => {
         media,
         textOverrides: job.textOverrides ?? {},
         audio,
+        assetUrls,
+        fontFaces,
       };
-      const base = await selectComposition({ serveUrl, id: "tempo", inputProps });
+      const base = await selectComposition({
+        serveUrl,
+        id: "tempo",
+        inputProps,
+        ...(process.env.BROWSER_EXECUTABLE
+          ? { browserExecutable: process.env.BROWSER_EXECUTABLE }
+          : {}),
+      });
       // honour the export format chosen in the app (vertical / square / landscape)
       const composition = {
         ...base,
@@ -121,6 +162,10 @@ app.post("/render", upload.any(), async (req, res) => {
         inputProps,
         concurrency: Number(process.env.RENDER_CONCURRENCY ?? 2),
         chromiumOptions: { gl: "swangle" },
+        // optional escape hatch for hosts that already ship a Chromium
+        ...(process.env.BROWSER_EXECUTABLE
+          ? { browserExecutable: process.env.BROWSER_EXECUTABLE }
+          : {}),
         onProgress: ({ progress }) => jobs.set(jobId, { state: "rendering", progress }),
       });
       jobs.set(jobId, {

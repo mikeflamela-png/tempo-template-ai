@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as BrandRouteImport } from './routes/brand'
 import { Route as LibraryRouteImport } from './routes/library'
+import { Route as ProjectsRouteImport } from './routes/projects'
 import { Route as EditorIdRouteImport } from './routes/editor.$id'
 import { Route as SettingsRenderingRouteImport } from './routes/settings.rendering'
 import { Route as ApiPublicRenderRouteImport } from './routes/api/public/render'
@@ -31,6 +32,11 @@ const BrandRoute = BrandRouteImport.update({
 const LibraryRoute = LibraryRouteImport.update({
   id: '/library',
   path: '/library',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ProjectsRoute = ProjectsRouteImport.update({
+  id: '/projects',
+  path: '/projects',
   getParentRoute: () => rootRouteImport,
 } as any)
 const EditorIdRoute = EditorIdRouteImport.update({
@@ -63,6 +69,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/brand': typeof BrandRoute
   '/library': typeof LibraryRoute
+  '/projects': typeof ProjectsRoute
   '/editor/$id': typeof EditorIdRoute
   '/settings/rendering': typeof SettingsRenderingRoute
   '/api/public/render': typeof ApiPublicRenderRoute
@@ -73,6 +80,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/brand': typeof BrandRoute
   '/library': typeof LibraryRoute
+  '/projects': typeof ProjectsRoute
   '/editor/$id': typeof EditorIdRoute
   '/settings/rendering': typeof SettingsRenderingRoute
   '/api/public/render': typeof ApiPublicRenderRoute
@@ -84,6 +92,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/brand': typeof BrandRoute
   '/library': typeof LibraryRoute
+  '/projects': typeof ProjectsRoute
   '/editor/$id': typeof EditorIdRoute
   '/settings/rendering': typeof SettingsRenderingRoute
   '/api/public/render': typeof ApiPublicRenderRoute
@@ -96,6 +105,7 @@ export interface FileRouteTypes {
     | '/'
     | '/brand'
     | '/library'
+    | '/projects'
     | '/editor/$id'
     | '/settings/rendering'
     | '/api/public/render'
@@ -106,6 +116,7 @@ export interface FileRouteTypes {
     | '/'
     | '/brand'
     | '/library'
+    | '/projects'
     | '/editor/$id'
     | '/settings/rendering'
     | '/api/public/render'
@@ -116,6 +127,7 @@ export interface FileRouteTypes {
     | '/'
     | '/brand'
     | '/library'
+    | '/projects'
     | '/editor/$id'
     | '/settings/rendering'
     | '/api/public/render'
@@ -127,6 +139,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   BrandRoute: typeof BrandRoute
   LibraryRoute: typeof LibraryRoute
+  ProjectsRoute: typeof ProjectsRoute
   EditorIdRoute: typeof EditorIdRoute
   SettingsRenderingRoute: typeof SettingsRenderingRoute
   ApiPublicRenderRoute: typeof ApiPublicRenderRoute
@@ -155,6 +168,13 @@ declare module '@tanstack/react-router' {
       path: '/library'
       fullPath: '/library'
       preLoaderRoute: typeof LibraryRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/projects': {
+      id: '/projects'
+      path: '/projects'
+      fullPath: '/projects'
+      preLoaderRoute: typeof ProjectsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/editor/$id': {
@@ -199,6 +219,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   BrandRoute: BrandRoute,
   LibraryRoute: LibraryRoute,
+  ProjectsRoute: ProjectsRoute,
   EditorIdRoute: EditorIdRoute,
   SettingsRenderingRoute: SettingsRenderingRoute,
   ApiPublicRenderRoute: ApiPublicRenderRoute,

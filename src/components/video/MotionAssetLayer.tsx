@@ -7,13 +7,19 @@
 import { useEffect, useState } from "react";
 import { AbsoluteFill, Audio, Img, OffthreadVideo, Sequence } from "remotion";
 import type { MotionAssetEvent } from "@/lib/template/types";
-import { assetKind, motionAssetById, type MotionAsset } from "@/lib/motion/assets";
+import type { AssetUrlMap, ResolvedAsset } from "@/lib/render/resolve";
+import { resolveAssetRef } from "@/lib/render/resolve";
 
 interface Props {
   events: MotionAssetEvent[];
   width: number;
   height: number;
   fps: number;
+  /**
+   * Server render: the worker uploads every referenced file and passes the
+   * resolved URLs here, because the render machine has no browser stores.
+   */
+  assetUrls?: AssetUrlMap | undefined;
 }
 
 function transformStyle(ev: MotionAssetEvent, width: number, height: number): React.CSSProperties {
@@ -38,7 +44,7 @@ function transformStyle(ev: MotionAssetEvent, width: number, height: number): Re
  * parsed here (no extra dependency) — instead we render nothing visible but
  * never crash. If @remotion/lottie is added later this component is the only
  * place that needs to change. */
-function LottieAsset({ asset }: { asset: MotionAsset }) {
+function LottieAsset({ asset }: { asset: ResolvedAsset }) {
   const [ok, setOk] = useState<boolean | null>(null);
   useEffect(() => {
     let cancelled = false;
@@ -64,8 +70,8 @@ function LottieAsset({ asset }: { asset: MotionAsset }) {
   return null;
 }
 
-function AssetVisual({ ev, asset }: { ev: MotionAssetEvent; asset: MotionAsset }) {
-  const kind = assetKind(asset);
+function AssetVisual({ ev, asset }: { ev: MotionAssetEvent; asset: ResolvedAsset }) {
+  const kind = asset.kind;
   if (!asset.url) return null;
   const speed = ev.speed ?? asset.speed ?? 1;
   const loop = ev.loop ?? asset.loop ?? false;
@@ -98,14 +104,30 @@ function AssetVisual({ ev, asset }: { ev: MotionAssetEvent; asset: MotionAsset }
   }
 }
 
-export function MotionAssetLayer({ events, width, height, fps }: Props) {
+export function MotionAssetLayer({ events, width, height, fps, assetUrls }: Props) {
   if (typeof window === "undefined") return null;
   if (!events || events.length === 0) return null;
+
+  const resolve = (id: string): ResolvedAsset | null => {
+    const shipped = assetUrls?.[id];
+    if (shipped) {
+      return {
+        id,
+        url: shipped.url,
+        kind: shipped.kind,
+        fileName: id,
+        mime: "",
+        loop: shipped.loop,
+        speed: shipped.speed,
+      };
+    }
+    return resolveAssetRef(id);
+  };
 
   return (
     <AbsoluteFill style={{ pointerEvents: "none" }}>
       {events.map((ev) => {
-        const asset = motionAssetById(ev.assetId);
+        const asset = resolve(ev.assetId);
         if (!asset) return null;
         const from = Math.max(0, Math.round(ev.start * fps));
         const durationInFrames = Math.max(1, Math.round(ev.duration * fps));
