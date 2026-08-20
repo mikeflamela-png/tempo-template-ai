@@ -26,8 +26,13 @@ import {
 import { addGenerated, useTemplateStore } from "@/lib/template/store";
 import { STYLE_PACKS, applyStylePack, stylePackByKey } from "@/lib/template/stylepacks";
 import { syncSpecToTrack } from "@/lib/template/sync";
+import { useBrandStore, brandById, copyKitById, fontWarnings } from "@/lib/brand/store";
+import { applyBrand } from "@/lib/brand/apply";
+import { MOTION_PACKS, packByKey, applyMotionPack } from "@/lib/motion/packs";
+import { allBlueprints, blueprintById, applyBlueprint, useBlueprints } from "@/lib/blueprint/library";
 import { Link } from "@tanstack/react-router";
 import type { TemplateSpec } from "@/lib/template/types";
+
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -102,7 +107,34 @@ function Chips<T extends string | number>({
   );
 }
 
+function Pill({
+  active,
+  onClick,
+  title,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  title?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      {...(title ? { title } : {})}
+      className={`rounded-full border px-3.5 py-1.5 text-sm transition-colors ${
+        active
+          ? "border-primary bg-primary text-primary-foreground"
+          : "border-border text-muted-foreground hover:text-foreground"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
 function Index() {
+
   const { generated, saved, audio } = useTemplateStore();
   const [packKey, setPackKey] = useState<string | null>(null);
   const [musicFirst, setMusicFirst] = useState(false);
@@ -121,6 +153,18 @@ function Index() {
   const [layoutComplexity, setLayoutComplexity] = useState(LAYOUT_COMPLEXITIES[1]!);
   const [risk, setRisk] = useState(4);
   const [showMore, setShowMore] = useState(false);
+  const brand = useBrandStore();
+  useBlueprints();
+  const [brandId, setBrandId] = useState<string | null>(null);
+  const [copyId, setCopyId] = useState<string | null>(null);
+  const [blueprintId, setBlueprintId] = useState<string | null>(null);
+  const [motionKey, setMotionKey] = useState<string | null>(null);
+  const [effectAmount, setEffectAmount] = useState(5);
+
+  const activeBrand = brandById(brandId ?? brand.activeKitId);
+  const activeCopy = copyKitById(copyId ?? brand.activeCopyId);
+  const warnings = fontWarnings(activeBrand);
+  const blueprints = allBlueprints();
 
   const opts: GenerateOptions = {
     prompt,
@@ -139,10 +183,19 @@ function Index() {
 
   const finish = (specs: TemplateSpec[]) => {
     const pack = stylePackByKey(packKey);
-    let out = pack ? specs.map((s) => applyStylePack(s, pack)) : specs;
+    const blueprint = blueprintById(blueprintId);
+    const motion = packByKey(motionKey);
+    let out = specs.map((s) => {
+      let spec = pack ? applyStylePack(s, pack) : s;
+      spec = applyBlueprint(spec, blueprint);
+      spec = applyMotionPack(spec, motion, effectAmount);
+      spec = applyBrand(spec, activeBrand, activeCopy);
+      return spec;
+    });
     if (musicFirst && audio?.beatMap) out = out.map((s) => syncSpecToTrack(s, audio, 0.7));
     return out;
   };
+
 
   const generate = () => {
     setBusy(true);
@@ -179,11 +232,18 @@ function Index() {
           </span>
           <div className="flex items-center gap-4">
             <Link
+              to="/brand"
+              className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground hover:text-foreground"
+            >
+              Brand kit
+            </Link>
+            <Link
               to="/library"
               className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground hover:text-foreground"
             >
               Creative library
             </Link>
+
             <PreviewReelControl compact />
           </div>
         </header>
@@ -255,6 +315,112 @@ function Index() {
                 </div>
               )}
             </div>
+
+            <div className="mt-5 grid gap-5 border-t border-border pt-5 sm:grid-cols-2">
+              <div className="space-y-2">
+                <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
+                  Brand kit
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <Pill active={!activeBrand} onClick={() => setBrandId(null)}>
+                    None
+                  </Pill>
+                  {brand.kits.map((k) => (
+                    <Pill key={k.id} active={activeBrand?.id === k.id} onClick={() => setBrandId(k.id)}>
+                      {k.name}
+                    </Pill>
+                  ))}
+                  <Link
+                    to="/brand"
+                    className="rounded-full border border-dashed border-border px-3.5 py-1.5 text-sm text-muted-foreground hover:text-foreground"
+                  >
+                    + Manage
+                  </Link>
+                </div>
+                {warnings.map((w) => (
+                  <p key={w} className="text-xs text-destructive">
+                    {w}
+                  </p>
+                ))}
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
+                  Copy kit
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <Pill active={!activeCopy} onClick={() => setCopyId(null)}>
+                    Placeholder copy
+                  </Pill>
+                  {brand.copyKits.map((c) => (
+                    <Pill key={c.id} active={activeCopy?.id === c.id} onClick={() => setCopyId(c.id)}>
+                      {c.name} · {c.mode}
+                    </Pill>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-2 sm:col-span-2">
+                <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
+                  Blueprint
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <Pill active={!blueprintId} onClick={() => setBlueprintId(null)}>
+                    Let Tempo decide
+                  </Pill>
+                  {blueprints.map((b) => (
+                    <Pill
+                      key={b.id}
+                      active={blueprintId === b.id}
+                      onClick={() => setBlueprintId(b.id)}
+                      title={b.blurb}
+                    >
+                      {b.name}
+                    </Pill>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-2 sm:col-span-2">
+                <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
+                  Motion kit
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <Pill active={!motionKey} onClick={() => setMotionKey(null)}>
+                    Mixed
+                  </Pill>
+                  {MOTION_PACKS.map((p) => (
+                    <Pill
+                      key={p.key}
+                      active={motionKey === p.key}
+                      onClick={() => setMotionKey(p.key)}
+                      title={p.blurb}
+                    >
+                      {p.name}
+                    </Pill>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-2 sm:col-span-2">
+                <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
+                  Effect amount
+                </p>
+                <Slider
+                  value={[effectAmount]}
+                  min={0}
+                  max={10}
+                  step={1}
+                  onValueChange={(v) => setEffectAmount(v[0] ?? 5)}
+                />
+                <div className="flex justify-between text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+                  <span>Clean cuts</span>
+                  <span>Full treatment</span>
+                </div>
+              </div>
+            </div>
+
+
 
             <div className="mt-5 space-y-2 border-t border-border pt-5">
               <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
