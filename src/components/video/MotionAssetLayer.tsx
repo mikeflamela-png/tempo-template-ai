@@ -84,7 +84,7 @@ function AssetVisual({ ev, asset }: { ev: MotionAssetEvent; asset: MotionAsset }
         <OffthreadVideo
           src={asset.url}
           muted
-          loop={loop}
+          {...(loop ? { loop: true } : {})}
           playbackRate={Math.max(0.1, speed)}
           style={{ width: "100%", height: "100%", objectFit: "contain" }}
         />

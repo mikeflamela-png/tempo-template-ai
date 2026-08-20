@@ -256,7 +256,7 @@ export function seedTypeSystemsForBrand(brandId: string, kit?: BrandKit | null):
     const fontId =
       role === "cta" ? accentFont?.id : role === "label" || role === "caption" ? bodyFont?.id : displayFont?.id;
     const color = role === "cta" ? kit?.colors.accent : kit?.colors.ink;
-    return { ...base, fontId, color };
+    return { ...base, ...(fontId ? { fontId } : {}), ...(color ? { color } : {}) };
   });
   const next = { systems: [...state.systems, ...seeded.map((s) => ({ ...s, id: uid("type"), createdAt: Date.now() }))] };
   commit(next);
@@ -289,15 +289,15 @@ export function bestTypeSystemForRole(systems: TypeSystem[], role: TypeSystemRol
 function applySystemToSlot(slot: TextSlot, system: TypeSystem): TextSlot {
   return {
     ...slot,
-    fontKey: system.fontId ?? slot.fontKey,
+    ...(system.fontId ?? slot.fontKey ? { fontKey: (system.fontId ?? slot.fontKey) as string } : {}),
     fontWeight: system.fontWeight,
     sizeScale: system.sizeScale,
     tracking: system.tracking,
     lineHeight: system.lineHeight,
     align: system.align,
-    color: system.color ?? slot.color,
+    ...(system.color ?? slot.color ? { color: (system.color ?? slot.color) as string } : {}),
     stroke: system.stroke,
-    strokeColor: system.strokeColor ?? slot.strokeColor,
+    ...(system.strokeColor ?? slot.strokeColor ? { strokeColor: (system.strokeColor ?? slot.strokeColor) as string } : {}),
     background: system.background === "none" ? undefined : system.background,
     style: system.animation,
     position: system.position,

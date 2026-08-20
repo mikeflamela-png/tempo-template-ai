@@ -56,7 +56,7 @@ const bp = (
   bestFor: string[],
   blocks: BlueprintBlock[],
   motionSlots?: MotionSlot[],
-): Blueprint => ({ id, name, blurb, source: "builtin", blocks, bestFor, motionSlots });
+): Blueprint => ({ id, name, blurb, source: "builtin", blocks, bestFor, ...(motionSlots ? { motionSlots } : {}) });
 
 const slot = (
   key: string,
@@ -68,7 +68,7 @@ const slot = (
   optional: boolean,
   styleTags: string[],
   at?: number,
-): MotionSlot => ({ key, name, categories, minDuration, maxDuration, intensity, optional, styleTags, at });
+): MotionSlot => ({ key, name, categories, minDuration, maxDuration, intensity, optional, styleTags, ...(at === undefined ? {} : { at }) });
 
 export const BUILTIN_BLUEPRINTS: Blueprint[] = [
   bp("hook_proof_cta", "Hook → Proof → CTA", "The dependable direct-response shape.", ["Ads", "DTC"], [
