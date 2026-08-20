@@ -45,7 +45,7 @@ export default function FeedbackDialog({ targetId, kind, open, onOpenChange }: F
   }
 
   function submit() {
-    recordFeedback({ targetId, kind, tags, note: note.trim() || undefined });
+    recordFeedback({ targetId, kind, tags, ...(note.trim() ? { note: note.trim() } : {}) });
     onOpenChange(false);
   }
 
