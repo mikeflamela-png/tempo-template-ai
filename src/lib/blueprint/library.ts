@@ -77,6 +77,11 @@ export const BUILTIN_BLUEPRINTS: Blueprint[] = [
     { kind: "product", share: 2 },
     { kind: "proof", share: 1.6 },
     { kind: "end_card", share: 1.4 },
+  ], [
+    slot("opening_accent", "OPENING ACCENT", ["opening"], 0.3, 0.8, 0.7, false, ["hook"], 0),
+    slot("text_impact", "TEXT IMPACT", ["text"], 0.4, 1, 0.6, true, ["kinetic"], 0.2),
+    slot("product_callout", "PRODUCT CALLOUT", ["product"], 0.6, 1.4, 0.5, false, ["clean"], 0.55),
+    slot("ending_treatment", "ENDING TREATMENT", ["ending"], 0.8, 1.6, 0.4, true, ["resolve"], 0.9),
   ]),
   bp("three_beat_burst", "Three Beat Burst", "Three fast statements, one landing.", ["TikTok", "Reels"], [
     { kind: "hook", share: 1.4 },
@@ -86,6 +91,11 @@ export const BUILTIN_BLUEPRINTS: Blueprint[] = [
     { kind: "text_beat", share: 1 },
     { kind: "hold", share: 1.8, note: "let the last shot breathe" },
     { kind: "end_card", share: 1.2 },
+  ], [
+    slot("opening_accent", "OPENING ACCENT", ["opening"], 0.2, 0.6, 0.9, false, ["rapid-cut"], 0),
+    slot("transition_event", "TRANSITION EVENT", ["transition"], 0.1, 0.3, 0.85, true, ["flash", "whip"], 0.35),
+    slot("text_impact", "TEXT IMPACT", ["text"], 0.3, 0.7, 0.7, true, ["kinetic"], 0.5),
+    slot("ending_treatment", "ENDING TREATMENT", ["ending"], 0.5, 1.2, 0.3, true, ["hold"], 0.85),
   ]),
   bp("slow_reveal", "Slow Reveal", "Texture, detail, then the product.", ["Luxury", "Beauty"], [
     { kind: "detail", share: 2.2 },
@@ -93,6 +103,11 @@ export const BUILTIN_BLUEPRINTS: Blueprint[] = [
     { kind: "text_beat", share: 1.2 },
     { kind: "product", share: 2.6 },
     { kind: "end_card", share: 1.4 },
+  ], [
+    slot("texture_moment", "TEXTURE MOMENT", ["texture"], 0.8, 1.8, 0.4, false, ["macro", "slow"], 0.05),
+    slot("midpoint_surprise", "MIDPOINT SURPRISE", ["surprise"], 0.4, 1, 0.5, true, ["freeze"], 0.5),
+    slot("product_callout", "PRODUCT CALLOUT", ["product"], 1, 2, 0.5, false, ["reveal"], 0.7),
+    slot("ending_treatment", "ENDING TREATMENT", ["ending"], 0.8, 1.6, 0.3, true, ["resolve"], 0.92),
   ]),
   bp("problem_solution", "Problem → Solution", "Tension then relief.", ["Ads", "Apps"], [
     { kind: "hook", share: 1.8 },
@@ -101,6 +116,11 @@ export const BUILTIN_BLUEPRINTS: Blueprint[] = [
     { kind: "product", share: 2.2 },
     { kind: "proof", share: 1.4 },
     { kind: "end_card", share: 1.2 },
+  ], [
+    slot("opening_accent", "OPENING ACCENT", ["opening"], 0.3, 0.7, 0.7, false, ["tension"], 0),
+    slot("transition_event", "TRANSITION EVENT", ["transition"], 0.15, 0.35, 0.8, true, ["snap"], 0.4),
+    slot("product_callout", "PRODUCT CALLOUT", ["product"], 0.8, 1.6, 0.5, false, ["relief"], 0.6),
+    slot("ending_treatment", "ENDING TREATMENT", ["ending"], 0.6, 1.2, 0.35, true, ["resolve"], 0.9),
   ]),
   bp("editorial_essay", "Editorial Essay", "Lookbook pacing with annotated stills.", ["Fashion"], [
     { kind: "hook", share: 1.6 },
@@ -110,6 +130,11 @@ export const BUILTIN_BLUEPRINTS: Blueprint[] = [
     { kind: "detail", share: 1.6 },
     { kind: "product", share: 1.8 },
     { kind: "end_card", share: 1.2 },
+  ], [
+    slot("texture_moment", "TEXTURE MOMENT", ["texture"], 0.6, 1.4, 0.35, true, ["still"], 0.15),
+    slot("text_impact", "TEXT IMPACT", ["text"], 0.4, 0.9, 0.5, true, ["caption"], 0.45),
+    slot("product_callout", "PRODUCT CALLOUT", ["product"], 0.6, 1.4, 0.45, false, ["editorial"], 0.75),
+    slot("ending_treatment", "ENDING TREATMENT", ["ending"], 0.5, 1, 0.3, true, ["fade"], 0.92),
   ]),
   bp("list_of_three", "List of Three", "Three features, one CTA.", ["SaaS", "DTC"], [
     { kind: "hook", share: 1.6 },
@@ -120,6 +145,12 @@ export const BUILTIN_BLUEPRINTS: Blueprint[] = [
     { kind: "text_beat", share: 1.1 },
     { kind: "product", share: 1.6 },
     { kind: "end_card", share: 1.3 },
+  ], [
+    slot("opening_accent", "OPENING ACCENT", ["opening"], 0.3, 0.7, 0.6, false, ["list"], 0),
+    slot("text_impact", "TEXT IMPACT", ["text"], 0.3, 0.7, 0.6, false, ["kinetic"], 0.3),
+    slot("text_impact_2", "TEXT IMPACT", ["text"], 0.3, 0.7, 0.6, false, ["kinetic"], 0.55),
+    slot("product_callout", "PRODUCT CALLOUT", ["product"], 0.7, 1.4, 0.5, false, ["clean"], 0.8),
+    slot("ending_treatment", "ENDING TREATMENT", ["ending"], 0.5, 1, 0.3, true, ["cta"], 0.93),
   ]),
   bp("testimonial", "Testimonial", "Face, claim, evidence, sign-off.", ["Proof", "UGC"], [
     { kind: "hook", share: 2 },
@@ -127,11 +158,20 @@ export const BUILTIN_BLUEPRINTS: Blueprint[] = [
     { kind: "proof", share: 2 },
     { kind: "product", share: 1.6 },
     { kind: "end_card", share: 1.2 },
+  ], [
+    slot("opening_accent", "OPENING ACCENT", ["opening"], 0.3, 0.8, 0.6, true, ["candid"], 0),
+    slot("midpoint_surprise", "MIDPOINT SURPRISE", ["surprise"], 0.4, 1, 0.4, true, ["freeze"], 0.5),
+    slot("product_callout", "PRODUCT CALLOUT", ["product"], 0.7, 1.4, 0.5, false, ["clean"], 0.75),
+    slot("ending_treatment", "ENDING TREATMENT", ["ending"], 0.6, 1.2, 0.3, true, ["resolve"], 0.92),
   ]),
   bp("one_shot_statement", "One Shot Statement", "A single held image and one sentence.", ["Brand"], [
     { kind: "hold", share: 3.4 },
     { kind: "text_beat", share: 1.6 },
     { kind: "end_card", share: 1.4 },
+  ], [
+    slot("texture_moment", "TEXTURE MOMENT", ["texture"], 1, 2.5, 0.3, true, ["still"], 0.1),
+    slot("text_impact", "TEXT IMPACT", ["text"], 0.6, 1.4, 0.5, false, ["single-line"], 0.55),
+    slot("ending_treatment", "ENDING TREATMENT", ["ending"], 0.8, 1.6, 0.3, true, ["fade"], 0.9),
   ]),
 ];
 
@@ -298,4 +338,25 @@ export function applyBlueprint(spec: TemplateSpec, blueprint?: Blueprint | null)
     textSlots,
     tags: [...new Set([...(spec.tags ?? []), blueprint.name])],
   };
+}
+
+/**
+ * Resolves a blueprint's motion slots onto a concrete timeline: `at`
+ * (normalized 0-1) becomes `start` in seconds, and duration is clamped to
+ * [minDuration, maxDuration] against the available runway.
+ */
+export function resolveMotionSlots(
+  blueprint: Blueprint,
+  duration: number,
+): (MotionSlot & { start: number; duration: number })[] {
+  const slots = blueprint.motionSlots ?? [];
+  return slots
+    .map((s, i) => {
+      const at = s.at ?? i / Math.max(1, slots.length);
+      const start = Number((Math.min(1, Math.max(0, at)) * duration).toFixed(2));
+      const remaining = Math.max(0.1, duration - start);
+      const dur = Number(Math.min(s.maxDuration, Math.max(s.minDuration, Math.min(s.maxDuration, remaining))).toFixed(2));
+      return { ...s, start, duration: Math.min(dur, remaining) };
+    })
+    .sort((a, b) => a.start - b.start);
 }

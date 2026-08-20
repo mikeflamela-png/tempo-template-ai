@@ -5,7 +5,7 @@
  * per kind, preserving transparency (no background fill anywhere).
  */
 import { useEffect, useState } from "react";
-import { AbsoluteFill, Audio, Img, OffthreadVideo, Sequence, useVideoConfig } from "remotion";
+import { AbsoluteFill, Audio, Img, OffthreadVideo, Sequence } from "remotion";
 import type { MotionAssetEvent } from "@/lib/template/types";
 import { assetKind, motionAssetById, type MotionAsset } from "@/lib/motion/assets";
 
