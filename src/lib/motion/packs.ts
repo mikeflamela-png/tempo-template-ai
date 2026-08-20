@@ -53,7 +53,7 @@ export const MOTION_PACKS: MotionPack[] = [
   {
     key: "type_forward",
     name: "Type Forward",
-    blurb: "Words as the主 event: crashes, pushes, drawn masks.",
+    blurb: "Words as the main event: crashes, pushes, drawn masks.",
     kernels: ["type_crash", "word_push", "mask_draw_on", "scribble_impact", "editorial_numbers"],
     transitions: ["hard_cut", "punch_zoom", "smear", "directional_blur"],
     overlays: ["flash", "bar_wipe", "noise"],
