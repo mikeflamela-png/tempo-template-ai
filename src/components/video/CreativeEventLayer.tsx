@@ -14,10 +14,10 @@ export interface KernelRenderProps {
   p: number;
   frame: number;
   palette: Palette;
-  fontFamily?: string;
-  footage?: MediaAssignment | null;
-  word?: string;
-  seed?: number;
+  footage?: MediaAssignment | null | undefined;
+  word?: string | undefined;
+  seed?: number | undefined;
+  fontFamily?: string | undefined;
 }
 
 const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
