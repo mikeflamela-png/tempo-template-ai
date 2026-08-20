@@ -13,7 +13,9 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as BrandRouteImport } from './routes/brand'
 import { Route as LibraryRouteImport } from './routes/library'
 import { Route as EditorIdRouteImport } from './routes/editor.$id'
+import { Route as SettingsRenderingRouteImport } from './routes/settings.rendering'
 import { Route as ApiPublicRenderRouteImport } from './routes/api/public/render'
+import { Route as ApiPublicRenderHealthRouteImport } from './routes/api/public/render-health'
 import { Route as ApiPublicRenderStatusIdRouteImport } from './routes/api/public/render-status.$id'
 
 const IndexRoute = IndexRouteImport.update({
@@ -36,9 +38,19 @@ const EditorIdRoute = EditorIdRouteImport.update({
   path: '/editor/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SettingsRenderingRoute = SettingsRenderingRouteImport.update({
+  id: '/settings/rendering',
+  path: '/settings/rendering',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicRenderRoute = ApiPublicRenderRouteImport.update({
   id: '/api/public/render',
   path: '/api/public/render',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicRenderHealthRoute = ApiPublicRenderHealthRouteImport.update({
+  id: '/api/public/render-health',
+  path: '/api/public/render-health',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiPublicRenderStatusIdRoute = ApiPublicRenderStatusIdRouteImport.update({
@@ -52,7 +64,9 @@ export interface FileRoutesByFullPath {
   '/brand': typeof BrandRoute
   '/library': typeof LibraryRoute
   '/editor/$id': typeof EditorIdRoute
+  '/settings/rendering': typeof SettingsRenderingRoute
   '/api/public/render': typeof ApiPublicRenderRoute
+  '/api/public/render-health': typeof ApiPublicRenderHealthRoute
   '/api/public/render-status/$id': typeof ApiPublicRenderStatusIdRoute
 }
 export interface FileRoutesByTo {
@@ -60,7 +74,9 @@ export interface FileRoutesByTo {
   '/brand': typeof BrandRoute
   '/library': typeof LibraryRoute
   '/editor/$id': typeof EditorIdRoute
+  '/settings/rendering': typeof SettingsRenderingRoute
   '/api/public/render': typeof ApiPublicRenderRoute
+  '/api/public/render-health': typeof ApiPublicRenderHealthRoute
   '/api/public/render-status/$id': typeof ApiPublicRenderStatusIdRoute
 }
 export interface FileRoutesById {
@@ -69,7 +85,9 @@ export interface FileRoutesById {
   '/brand': typeof BrandRoute
   '/library': typeof LibraryRoute
   '/editor/$id': typeof EditorIdRoute
+  '/settings/rendering': typeof SettingsRenderingRoute
   '/api/public/render': typeof ApiPublicRenderRoute
+  '/api/public/render-health': typeof ApiPublicRenderHealthRoute
   '/api/public/render-status/$id': typeof ApiPublicRenderStatusIdRoute
 }
 export interface FileRouteTypes {
@@ -79,7 +97,9 @@ export interface FileRouteTypes {
     | '/brand'
     | '/library'
     | '/editor/$id'
+    | '/settings/rendering'
     | '/api/public/render'
+    | '/api/public/render-health'
     | '/api/public/render-status/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -87,7 +107,9 @@ export interface FileRouteTypes {
     | '/brand'
     | '/library'
     | '/editor/$id'
+    | '/settings/rendering'
     | '/api/public/render'
+    | '/api/public/render-health'
     | '/api/public/render-status/$id'
   id:
     | '__root__'
@@ -95,7 +117,9 @@ export interface FileRouteTypes {
     | '/brand'
     | '/library'
     | '/editor/$id'
+    | '/settings/rendering'
     | '/api/public/render'
+    | '/api/public/render-health'
     | '/api/public/render-status/$id'
   fileRoutesById: FileRoutesById
 }
@@ -104,7 +128,9 @@ export interface RootRouteChildren {
   BrandRoute: typeof BrandRoute
   LibraryRoute: typeof LibraryRoute
   EditorIdRoute: typeof EditorIdRoute
+  SettingsRenderingRoute: typeof SettingsRenderingRoute
   ApiPublicRenderRoute: typeof ApiPublicRenderRoute
+  ApiPublicRenderHealthRoute: typeof ApiPublicRenderHealthRoute
   ApiPublicRenderStatusIdRoute: typeof ApiPublicRenderStatusIdRoute
 }
 
@@ -138,11 +164,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof EditorIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/settings/rendering': {
+      id: '/settings/rendering'
+      path: '/settings/rendering'
+      fullPath: '/settings/rendering'
+      preLoaderRoute: typeof SettingsRenderingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/render': {
       id: '/api/public/render'
       path: '/api/public/render'
       fullPath: '/api/public/render'
       preLoaderRoute: typeof ApiPublicRenderRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/render-health': {
+      id: '/api/public/render-health'
+      path: '/api/public/render-health'
+      fullPath: '/api/public/render-health'
+      preLoaderRoute: typeof ApiPublicRenderHealthRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/public/render-status/$id': {
@@ -160,7 +200,9 @@ const rootRouteChildren: RootRouteChildren = {
   BrandRoute: BrandRoute,
   LibraryRoute: LibraryRoute,
   EditorIdRoute: EditorIdRoute,
+  SettingsRenderingRoute: SettingsRenderingRoute,
   ApiPublicRenderRoute: ApiPublicRenderRoute,
+  ApiPublicRenderHealthRoute: ApiPublicRenderHealthRoute,
   ApiPublicRenderStatusIdRoute: ApiPublicRenderStatusIdRoute,
 }
 export const routeTree = rootRouteImport

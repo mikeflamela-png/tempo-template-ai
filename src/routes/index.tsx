@@ -33,6 +33,8 @@ import { appendEndCard, endCardsForBrand } from "@/lib/brand/endcards";
 import { rankByTaste } from "@/lib/taste/profile";
 import { regenerateGuard } from "@/lib/template/qa";
 import { MOTION_PACKS, packByKey, applyMotionPack } from "@/lib/motion/packs";
+import { composeMotion } from "@/lib/motion/compose";
+import { CREATIVE_SOURCES, type CreativeSource } from "@/lib/motion/assets";
 import { allBlueprints, blueprintById, applyBlueprint, useBlueprints } from "@/lib/blueprint/library";
 import { Link } from "@tanstack/react-router";
 import type { TemplateSpec } from "@/lib/template/types";
@@ -164,6 +166,7 @@ function Index() {
   const [blueprintId, setBlueprintId] = useState<string | null>(null);
   const [motionKey, setMotionKey] = useState<string | null>(null);
   const [effectAmount, setEffectAmount] = useState(5);
+  const [creativeSource, setCreativeSource] = useState<CreativeSource>("curated");
 
   const activeBrand = brandById(brandId ?? brand.activeKitId);
   const activeCopy = copyKitById(copyId ?? brand.activeCopyId);
@@ -200,6 +203,15 @@ function Index() {
         const card = endCardsForBrand(activeBrand.id)[0];
         if (card) spec = appendEndCard(spec, card, activeBrand);
       }
+      // Restraint + contrast: decide the treatment budget and spend it on the
+      // best available material (approved imports first, kernels after).
+      spec = composeMotion(spec, {
+        effectAmount,
+        source: creativeSource,
+        pack: motion ?? null,
+        ...(activeBrand ? { brandId: activeBrand.id } : {}),
+        ...(pack ? { styleTags: [pack.key] } : {}),
+      }).spec;
       return spec;
     });
     if (musicFirst && audio?.beatMap) out = out.map((s) => syncSpecToTrack(s, audio, 0.7));
@@ -429,6 +441,27 @@ function Index() {
 
               <div className="space-y-2 sm:col-span-2">
                 <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
+                  Creative source
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {CREATIVE_SOURCES.map((s) => (
+                    <Pill
+                      key={s.key}
+                      active={creativeSource === s.key}
+                      onClick={() => setCreativeSource(s.key)}
+                      title={s.blurb}
+                    >
+                      {s.label}
+                    </Pill>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {CREATIVE_SOURCES.find((s) => s.key === creativeSource)?.blurb}
+                </p>
+              </div>
+
+              <div className="space-y-2 sm:col-span-2">
+                <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
                   Effect amount
                 </p>
                 <Slider
@@ -502,6 +535,21 @@ function Index() {
               {busy ? <Loader2 className="size-5 animate-spin" /> : <Sparkles className="size-5" />}
               Generate Templates
             </Button>
+            <button
+              onClick={() => {
+                setPackKey(null);
+                setBlueprintId(null);
+                setMotionKey(null);
+                setCreativeSource("curated");
+                setEffectAmount(4);
+                setRisk(4);
+                generate();
+              }}
+              disabled={busy}
+              className="mt-3 w-full text-[11px] uppercase tracking-[0.2em] text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
+            >
+              Quick generate — let Tempo choose everything
+            </button>
           </div>
         </section>
       </div>
