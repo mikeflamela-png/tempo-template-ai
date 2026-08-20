@@ -857,7 +857,7 @@ export function CreativeKernel(props: KernelRenderProps) {
 
 import { useCurrentFrame } from "remotion";
 import type { CreativeEvent, MediaMap, TemplateSpec } from "@/lib/template/types";
-import { fontFamilyFor } from "@/lib/template/fonts";
+import { fontByKey } from "@/lib/template/fonts";
 
 export function CreativeEventLayer({
   event,
@@ -890,7 +890,7 @@ export function CreativeEventLayer({
         p={p}
         frame={frame}
         palette={spec.palette}
-        fontFamily={fontFamilyFor(spec.fontKey)}
+        fontFamily={fontByKey(spec.fontKey).family}
         footage={footage}
         word={event.word ?? spec.textSlots[0]?.value}
         seed={event.seed ?? 7}
