@@ -107,7 +107,34 @@ function Chips<T extends string | number>({
   );
 }
 
+function Pill({
+  active,
+  onClick,
+  title,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  title?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      {...(title ? { title } : {})}
+      className={`rounded-full border px-3.5 py-1.5 text-sm transition-colors ${
+        active
+          ? "border-primary bg-primary text-primary-foreground"
+          : "border-border text-muted-foreground hover:text-foreground"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
 function Index() {
+
   const { generated, saved, audio } = useTemplateStore();
   const [packKey, setPackKey] = useState<string | null>(null);
   const [musicFirst, setMusicFirst] = useState(false);
