@@ -137,7 +137,14 @@ app.post("/render", upload.any(), async (req, res) => {
         assetUrls,
         fontFaces,
       };
-      const base = await selectComposition({ serveUrl, id: "tempo", inputProps });
+      const base = await selectComposition({
+        serveUrl,
+        id: "tempo",
+        inputProps,
+        ...(process.env.BROWSER_EXECUTABLE
+          ? { browserExecutable: process.env.BROWSER_EXECUTABLE }
+          : {}),
+      });
       // honour the export format chosen in the app (vertical / square / landscape)
       const composition = {
         ...base,
@@ -155,6 +162,10 @@ app.post("/render", upload.any(), async (req, res) => {
         inputProps,
         concurrency: Number(process.env.RENDER_CONCURRENCY ?? 2),
         chromiumOptions: { gl: "swangle" },
+        // optional escape hatch for hosts that already ship a Chromium
+        ...(process.env.BROWSER_EXECUTABLE
+          ? { browserExecutable: process.env.BROWSER_EXECUTABLE }
+          : {}),
         onProgress: ({ progress }) => jobs.set(jobId, { state: "rendering", progress }),
       });
       jobs.set(jobId, {
