@@ -14,7 +14,15 @@ export interface PlayerProps {
 }
 
 const TemplatePlayerInner = forwardRef<PlayerRef, PlayerProps>(function Inner(
-  { spec, media, textOverrides, controls = true, autoPlay, loop = true, clickToPlay = true },
+  {
+    spec,
+    media,
+    textOverrides,
+    controls = true,
+    autoPlay = false,
+    loop = true,
+    clickToPlay = true,
+  },
   ref,
 ) {
   return (
