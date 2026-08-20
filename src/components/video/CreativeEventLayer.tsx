@@ -852,3 +852,49 @@ export function CreativeKernel(props: KernelRenderProps) {
       return null;
   }
 }
+
+/* ------------------------------------------------------- event wrapper */
+
+import { useCurrentFrame } from "remotion";
+import type { CreativeEvent, MediaMap, TemplateSpec } from "@/lib/template/types";
+import { fontFamilyFor } from "@/lib/template/fonts";
+
+export function CreativeEventLayer({
+  event,
+  spec,
+  media,
+}: {
+  event: CreativeEvent;
+  spec: TemplateSpec;
+  media: MediaMap;
+}) {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const total = Math.max(1, Math.round(event.duration * fps));
+  const p = Math.min(1, frame / total);
+
+  // footage playing underneath at this moment
+  const slot =
+    spec.mediaSlots.find(
+      (s) => s.start <= event.start + 0.01 && s.start + s.duration > event.start && s.layout === "full",
+    ) ??
+    spec.mediaSlots.find((s) => s.start <= event.start + 0.01 && s.start + s.duration > event.start) ??
+    spec.mediaSlots[0];
+  const footage = slot ? media[slot.id] ?? null : null;
+
+  return (
+    <AbsoluteFill style={{ opacity: event.opacity ?? 1 }}>
+      <CreativeKernel
+        kernelId={event.kernel}
+        params={event.params}
+        p={p}
+        frame={frame}
+        palette={spec.palette}
+        fontFamily={fontFamilyFor(spec.fontKey)}
+        footage={footage}
+        word={event.word ?? spec.textSlots[0]?.value}
+        seed={event.seed ?? 7}
+      />
+    </AbsoluteFill>
+  );
+}
