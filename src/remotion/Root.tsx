@@ -31,18 +31,16 @@ const fallbackSpec: TemplateSpec = {
 };
 
 export const RemotionRoot = () => (
-  <Composition
+  <Composition<Record<string, unknown>, TemplateVideoProps>
     id="tempo"
-    component={TemplateVideo}
+    component={TemplateVideo as never}
     durationInFrames={180}
     fps={30}
     width={1080}
     height={1920}
-    defaultProps={
-      { spec: fallbackSpec, media: {}, textOverrides: {}, audio: null } as TemplateVideoProps
-    }
+    defaultProps={{ spec: fallbackSpec, media: {}, textOverrides: {}, audio: null }}
     calculateMetadata={({ props }) => {
-      const spec = props.spec ?? fallbackSpec;
+      const spec = (props.spec ?? fallbackSpec) as TemplateSpec;
       return {
         durationInFrames: Math.max(2, Math.round(spec.duration * spec.fps)),
         fps: spec.fps,
