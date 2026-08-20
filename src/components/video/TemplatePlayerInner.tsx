@@ -11,6 +11,7 @@ export interface PlayerProps {
   autoPlay?: boolean;
   loop?: boolean;
   clickToPlay?: boolean;
+  initialFrame?: number;
 }
 
 const TemplatePlayerInner = forwardRef<PlayerRef, PlayerProps>(function Inner(
@@ -22,6 +23,7 @@ const TemplatePlayerInner = forwardRef<PlayerRef, PlayerProps>(function Inner(
     autoPlay = false,
     loop = true,
     clickToPlay = true,
+    initialFrame = 0,
   },
   ref,
 ) {
@@ -39,6 +41,7 @@ const TemplatePlayerInner = forwardRef<PlayerRef, PlayerProps>(function Inner(
       autoPlay={autoPlay}
       loop={loop}
       clickToPlay={clickToPlay}
+      initialFrame={initialFrame}
       acknowledgeRemotionLicense
     />
   );

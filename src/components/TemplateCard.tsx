@@ -46,6 +46,7 @@ export function TemplateCard({
           controls={false}
           loop
           clickToPlay={false}
+          initialFrame={Math.round(spec.duration * spec.fps * 0.35)}
         />
         <button
           onClick={toggle}

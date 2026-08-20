@@ -199,9 +199,9 @@ function EditorPage() {
         </aside>
 
         {/* Preview */}
-        <section className="flex flex-col items-center justify-center gap-4 bg-black/40 p-6">
+        <section className="flex min-w-0 flex-col items-center justify-center gap-4 bg-black/40 p-6">
           <div
-            className="h-[68vh] overflow-hidden rounded-2xl border border-border bg-black"
+            className="max-h-[70vh] max-w-full overflow-hidden rounded-2xl border border-border bg-black"
             style={{ aspectRatio: `${spec.width} / ${spec.height}` }}
           >
             <TemplatePlayer
