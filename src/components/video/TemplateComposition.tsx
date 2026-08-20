@@ -203,7 +203,7 @@ function MediaFill({
         startFrom={Math.round((asset.inPoint ?? 0) * fps)}
         muted={asset.muted !== false}
         style={style}
-￼      />
+      />
     );
   }
   if (asset) return <Img src={asset.url} style={style} />;
