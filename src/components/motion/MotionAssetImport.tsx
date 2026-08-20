@@ -71,7 +71,7 @@ function newDraft(file: File): Draft {
     url: URL.createObjectURL(file),
     category: "other",
     tags: "",
-    quality: "specialty",
+    quality: "core",
     speed: 1,
     scale: 1,
     x: 0,
