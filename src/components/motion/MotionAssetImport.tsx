@@ -1,16 +1,31 @@
 /**
- * Motion Asset Import panel: drop/pick a file, classify it (category, tags,
- * quality level), preview it live over the caller's preview node, tune the
- * default placement (speed/scale/position/opacity/duration/loop/reverse/
- * blend), file it into a Motion Kit, then save it to the library.
+ * Motion Asset Import: bulk drop/pick of N files, an editable review grid of
+ * drafts with auto-probed metadata + suggestions, bulk actions across
+ * selected drafts, a per-draft (or bulk) usage-rules editor, inline
+ * renderCompat() warnings, and a single "Import N assets" action that saves
+ * everything via importMotionAsset sequentially.
  */
-import { useMemo, useRef, useState } from "react";
+import { useRef, useState } from "react";
+import {
+  ChevronDown,
+  Film,
+  Heart,
+  Image as ImageIcon,
+  Sparkles,
+  Volume2,
+  X,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import {
   Select,
   SelectContent,
@@ -19,148 +34,195 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { MOTION_PACKS } from "@/lib/motion/packs";
+import { cn } from "@/lib/utils";
 import {
   MOTION_ASSET_CATEGORIES,
   MOTION_ASSET_QUALITIES,
+  MOTION_ASSET_ROLES,
+  DEFAULT_RULES,
   assetKind,
   deleteMotionAsset,
   importMotionAsset,
+  probeAsset,
+  renderCompat,
+  suggestIntensity,
+  suggestRole,
+  suggestTags,
+  toggleFavorite,
   updateMotionAsset,
   useMotionAssets,
-  type BlendModeName,
+  type AssetIntensity,
+  type EditSection,
   type MotionAsset,
   type MotionAssetCategory,
   type MotionAssetQuality,
+  type MotionAssetRole,
+  type MotionAssetRules,
 } from "@/lib/motion/assets";
+import MotionAssetGrid from "@/components/motion/MotionAssetGrid";
 
-const BLEND_MODES: BlendModeName[] = [
-  "normal",
-  "screen",
-  "multiply",
-  "overlay",
-  "lighten",
-  "difference",
-  "soft-light",
-];
+const INTENSITIES: AssetIntensity[] = ["subtle", "medium", "strong"];
+const SECTIONS: EditSection[] = ["opening", "middle", "ending", "any"];
 
 interface Props {
   previewSlot?: React.ReactNode;
 }
 
 interface Draft {
+  id: string;
   file: File;
   url: string;
+  probing: boolean;
+  name: string;
   category: MotionAssetCategory;
-  tags: string;
+  role: MotionAssetRole;
   quality: MotionAssetQuality;
-  speed: number;
-  scale: number;
-  x: number;
-  y: number;
-  opacity: number;
-  duration: number;
-  loop: boolean;
-  reverse: boolean;
-  blend: BlendModeName;
-  kitKey: string;
+  favorite: boolean;
+  tags: string[];
+  kitKeys: string[];
+  durationSec: number;
+  width?: number | undefined;
+  height?: number | undefined;
+  hasAlpha?: boolean | undefined;
+  thumb?: string | undefined;
+  rules: MotionAssetRules;
 }
 
-function newDraft(file: File): Draft {
+const uid = () => `draft-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e5).toString(36)}`;
+
+function baseDraft(file: File): Draft {
+  const category = "other" as MotionAssetCategory;
   return {
+    id: uid(),
     file,
     url: URL.createObjectURL(file),
-    category: "other",
-    tags: "",
+    probing: true,
+    name: file.name.replace(/\.[^.]+$/, ""),
+    category,
+    role: suggestRole(category, file.name),
     quality: "core",
-    speed: 1,
-    scale: 1,
-    x: 0,
-    y: 0,
-    opacity: 1,
-    duration: 2,
-    loop: false,
-    reverse: false,
-    blend: "screen",
-    kitKey: "",
+    favorite: false,
+    tags: suggestTags(file.name, category),
+    kitKeys: [],
+    durationSec: 0,
+    rules: { ...DEFAULT_RULES },
   };
 }
 
-function AssetPreviewMedia({ draft }: { draft: Draft }) {
+function DraftKindIcon({ draft }: { draft: Draft }) {
   const kind = assetKind({ mime: draft.file.type, fileName: draft.file.name });
-  const style: React.CSSProperties = {
-    position: "absolute",
-    inset: 0,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    opacity: draft.opacity,
-    mixBlendMode: draft.blend as React.CSSProperties["mixBlendMode"],
-    transform: `translate(${draft.x * 100}%, ${draft.y * 100}%) scale(${draft.scale})`,
-    pointerEvents: "none",
-  };
-  return (
-    <div style={style}>
-      {kind === "image" || kind === "svg" ? (
-        <img src={draft.url} alt="" style={{ maxWidth: "100%", maxHeight: "100%" }} />
-      ) : kind === "video" ? (
-        <video
-          src={draft.url}
-          autoPlay
-          muted
-          loop={draft.loop}
-          ref={(el) => {
-            if (el) el.playbackRate = Math.max(0.1, draft.speed);
-          }}
-          style={{ maxWidth: "100%", maxHeight: "100%" }}
-        />
-      ) : kind === "audio" ? (
-        <div className="text-xs text-muted-foreground">audio preview: play on save</div>
-      ) : (
-        <div className="text-xs text-muted-foreground">lottie preview unavailable</div>
-      )}
-    </div>
-  );
+  const cls = "h-6 w-6 text-muted-foreground";
+  if (kind === "video") return <Film className={cls} />;
+  if (kind === "audio") return <Volume2 className={cls} />;
+  if (kind === "lottie") return <Sparkles className={cls} />;
+  return <ImageIcon className={cls} />;
 }
 
 export default function MotionAssetImport({ previewSlot }: Props) {
   const assets = useMotionAssets();
-  const [draft, setDraft] = useState<Draft | null>(null);
+  const [drafts, setDrafts] = useState<Draft[]>([]);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [dragOver, setDragOver] = useState(false);
+  const [rulesOpen, setRulesOpen] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [gridSelected, setGridSelected] = useState<Set<string>>(new Set());
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const patch = (p: Partial<Draft>) => setDraft((d) => (d ? { ...d, ...p } : d));
+  const patchDraft = (id: string, p: Partial<Draft>) =>
+    setDrafts((ds) => ds.map((d) => (d.id === id ? { ...d, ...p } : d)));
 
-  const onFile = (file: File | undefined | null) => {
-    if (!file) return;
-    setDraft(newDraft(file));
-  };
+  const patchSelected = (p: Partial<Draft>) =>
+    setDrafts((ds) => ds.map((d) => (selected.has(d.id) ? { ...d, ...p } : d)));
 
-  const handleSave = async () => {
-    if (!draft) return;
-    const asset = await importMotionAsset(draft.file, {
-      category: draft.category,
-      tags: draft.tags
-        .split(",")
-        .map((t) => t.trim())
-        .filter(Boolean),
-      quality: draft.quality,
-      defaultScale: draft.scale,
-      defaultX: draft.x,
-      defaultY: draft.y,
-      defaultOpacity: draft.opacity,
-      durationSec: draft.duration,
-      loop: draft.loop,
-      reverse: draft.reverse,
-      speed: draft.speed,
-      blend: draft.blend,
-      kitKeys: draft.kitKey ? [draft.kitKey] : [],
+  const patchSelectedRules = (p: Partial<MotionAssetRules>) =>
+    setDrafts((ds) =>
+      ds.map((d) => (selected.has(d.id) ? { ...d, rules: { ...d.rules, ...p } } : d)),
+    );
+
+  const onFiles = (files: FileList | File[] | null) => {
+    if (!files || files.length === 0) return;
+    const list = Array.from(files);
+    const created = list.map(baseDraft);
+    setDrafts((ds) => [...created, ...ds]);
+    created.forEach((d) => {
+      void probeAsset(d.file).then((probe) => {
+        const category = d.category; // keep "other" default; refine via inferCategory-like heuristics via role
+        const durationSec = probe.duration ?? 0;
+        const role = suggestRole(category, d.file.name);
+        const tags = suggestTags(d.file.name, category);
+        const intensity = suggestIntensity(category, durationSec);
+        patchDraft(d.id, {
+          probing: false,
+          durationSec,
+          role,
+          tags,
+          ...(probe.width ? { width: probe.width } : {}),
+          ...(probe.height ? { height: probe.height } : {}),
+          ...(probe.hasAlpha !== undefined ? { hasAlpha: probe.hasAlpha } : {}),
+          ...(probe.thumb ? { thumb: probe.thumb } : {}),
+          rules: { ...DEFAULT_RULES, intensity },
+        });
+      });
     });
-    void asset;
-    URL.revokeObjectURL(draft.url);
-    setDraft(null);
   };
 
-  const grouped = useMemo(() => assets, [assets]);
+  const toggleDraftSelect = (id: string) =>
+    setSelected((s) => {
+      const next = new Set(s);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  const selectAll = () => setSelected(new Set(drafts.map((d) => d.id)));
+  const selectNone = () => setSelected(new Set());
+
+  const removeDrafts = (ids: Set<string>) => {
+    setDrafts((ds) => {
+      ds.filter((d) => ids.has(d.id)).forEach((d) => URL.revokeObjectURL(d.url));
+      return ds.filter((d) => !ids.has(d.id));
+    });
+    setSelected((s) => {
+      const next = new Set(s);
+      ids.forEach((id) => next.delete(id));
+      return next;
+    });
+  };
+
+  const handleImportAll = async () => {
+    if (drafts.length === 0 || importing) return;
+    setImporting(true);
+    setProgress(0);
+    const toImport = [...drafts];
+    for (let i = 0; i < toImport.length; i++) {
+      const d = toImport[i]!;
+      await importMotionAsset(d.file, {
+        name: d.name,
+        category: d.category,
+        role: d.role,
+        quality: d.quality,
+        favorite: d.favorite,
+        tags: d.tags,
+        kitKeys: d.kitKeys,
+        durationSec: d.durationSec,
+        rules: d.rules,
+        ...(d.width ? { width: d.width } : {}),
+        ...(d.height ? { height: d.height } : {}),
+        ...(d.hasAlpha !== undefined ? { hasAlpha: d.hasAlpha } : {}),
+        ...(d.thumb ? { thumb: d.thumb } : {}),
+      });
+      URL.revokeObjectURL(d.url);
+      setProgress(i + 1);
+    }
+    setDrafts([]);
+    setSelected(new Set());
+    setImporting(false);
+    setProgress(0);
+  };
+
+  const selectedRulesSeed =
+    drafts.find((d) => selected.has(d.id))?.rules ?? DEFAULT_RULES;
 
   return (
     <div className="flex flex-col gap-6">
@@ -173,175 +235,396 @@ export default function MotionAssetImport({ previewSlot }: Props) {
         onDrop={(e) => {
           e.preventDefault();
           setDragOver(false);
-          onFile(e.dataTransfer.files?.[0]);
+          onFiles(e.dataTransfer.files);
         }}
         onClick={() => inputRef.current?.click()}
-        className={`flex cursor-pointer flex-col items-center justify-center rounded-md border border-dashed p-8 text-center text-sm transition-colors ${
-          dragOver ? "border-primary bg-primary/5" : "border-border text-muted-foreground"
-        }`}
+        className={cn(
+          "flex cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed p-8 text-center text-sm transition-colors",
+          dragOver ? "border-primary bg-primary/5" : "border-border text-muted-foreground",
+        )}
       >
-        <p>Drop a motion asset here or click to browse</p>
-        <p className="mt-1 text-xs opacity-70">SVG · PNG/WebP · GIF · WebM/MOV alpha · Lottie JSON · audio</p>
+        <p>Drop motion assets here or click to browse — import as many as you like</p>
+        <p className="mt-1 text-xs opacity-70">
+          SVG · PNG/WebP · GIF · WebM/MOV alpha · Lottie JSON · MP4 · MP3/WAV
+        </p>
         <input
           ref={inputRef}
           type="file"
+          multiple
           className="hidden"
-          accept=".svg,.png,.webp,.gif,.webm,.mov,.json,.lottie,.mp3,.wav,.m4a,video/*,image/*,audio/*,application/json"
-          onChange={(e) => onFile(e.target.files?.[0])}
+          accept=".svg,.png,.webp,.gif,.webm,.mov,.mp4,.json,.lottie,.mp3,.wav,video/*,image/*,audio/*,application/json"
+          onChange={(e) => {
+            onFiles(e.target.files);
+            e.target.value = "";
+          }}
         />
       </div>
 
-      {draft && (
-        <div className="flex flex-col gap-4 rounded-md border border-border p-4">
-          <div className="relative aspect-video w-full overflow-hidden rounded-md bg-muted">
-            {previewSlot}
-            <AssetPreviewMedia draft={draft} />
+      {previewSlot}
+
+      {drafts.length > 0 && (
+        <div className="flex flex-col gap-4 rounded-xl border border-border p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <span>{drafts.length} draft{drafts.length === 1 ? "" : "s"}</span>
+              <span>·</span>
+              <span>{selected.size} selected</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button size="sm" variant="ghost" onClick={selectAll}>Select all</Button>
+              <Button size="sm" variant="ghost" onClick={selectNone}>Select none</Button>
+            </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="flex flex-col gap-1.5">
-              <Label>Category</Label>
-              <Select value={draft.category} onValueChange={(v) => patch({ category: v as MotionAssetCategory })}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {MOTION_ASSET_CATEGORIES.map((c) => (
-                    <SelectItem key={c} value={c}>{c}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label>Quality level</Label>
-              <Select value={draft.quality} onValueChange={(v) => patch({ quality: v as MotionAssetQuality })}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+          {selected.size > 0 && (
+            <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/30 p-2">
+              <Select onValueChange={(v) => patchSelected({ quality: v as MotionAssetQuality })}>
+                <SelectTrigger className="h-8 w-[130px] text-xs"><SelectValue placeholder="Set tier" /></SelectTrigger>
                 <SelectContent>
                   {MOTION_ASSET_QUALITIES.map((q) => (
                     <SelectItem key={q} value={q}>{q}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-            </div>
-            <div className="col-span-2 flex flex-col gap-1.5">
-              <Label>Tags (comma separated)</Label>
-              <Input value={draft.tags} onChange={(e) => patch({ tags: e.target.value })} placeholder="grunge, warm, editorial" />
-            </div>
-            <div className="col-span-2 flex flex-col gap-1.5">
-              <Label>Blend mode</Label>
-              <Select value={draft.blend} onValueChange={(v) => patch({ blend: v as BlendModeName })}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+              <Select onValueChange={(v) => patchSelected({ category: v as MotionAssetCategory })}>
+                <SelectTrigger className="h-8 w-[140px] text-xs"><SelectValue placeholder="Set category" /></SelectTrigger>
                 <SelectContent>
-                  {BLEND_MODES.map((b) => (
-                    <SelectItem key={b} value={b}>{b}</SelectItem>
+                  {MOTION_ASSET_CATEGORIES.map((c) => (
+                    <SelectItem key={c} value={c}>{c}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              <Select onValueChange={(v) => patchSelected({ role: v as MotionAssetRole })}>
+                <SelectTrigger className="h-8 w-[140px] text-xs"><SelectValue placeholder="Set role" /></SelectTrigger>
+                <SelectContent>
+                  {MOTION_ASSET_ROLES.map((r) => (
+                    <SelectItem key={r} value={r}>{r}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select
+                onValueChange={(v) =>
+                  setDrafts((ds) =>
+                    ds.map((d) =>
+                      selected.has(d.id) && !d.kitKeys.includes(v)
+                        ? { ...d, kitKeys: [...d.kitKeys, v] }
+                        : d,
+                    ),
+                  )
+                }
+              >
+                <SelectTrigger className="h-8 w-[150px] text-xs"><SelectValue placeholder="Add to kit" /></SelectTrigger>
+                <SelectContent>
+                  {MOTION_PACKS.map((p) => (
+                    <SelectItem key={p.key} value={p.key}>{p.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => patchSelected({ favorite: true })}
+                className="gap-1"
+              >
+                <Heart className="h-3.5 w-3.5" /> Favorite
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => removeDrafts(new Set(selected))} className="gap-1 text-destructive">
+                <X className="h-3.5 w-3.5" /> Remove
+              </Button>
             </div>
+          )}
+
+          {selected.size > 0 && (
+            <Collapsible open={rulesOpen} onOpenChange={setRulesOpen}>
+              <CollapsibleTrigger asChild>
+                <button
+                  type="button"
+                  className="flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground"
+                >
+                  <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", rulesOpen && "rotate-180")} />
+                  Usage rules for {selected.size} selected
+                </button>
+              </CollapsibleTrigger>
+              <CollapsibleContent className="mt-3 grid grid-cols-2 gap-3 rounded-lg border border-border p-3 md:grid-cols-3">
+                <div className="flex flex-col gap-1.5">
+                  <Label className="text-xs">Max uses</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    defaultValue={selectedRulesSeed.maxUses}
+                    onChange={(e) => patchSelectedRules({ maxUses: Math.max(1, Number(e.target.value) || 1) })}
+                    className="h-8 text-xs"
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label className="text-xs">Min duration (s)</Label>
+                  <Input
+                    type="number"
+                    step={0.1}
+                    defaultValue={selectedRulesSeed.minDuration ?? ""}
+                    onChange={(e) =>
+                      patchSelectedRules({
+                        minDuration: e.target.value === "" ? undefined : Number(e.target.value),
+                      })
+                    }
+                    className="h-8 text-xs"
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label className="text-xs">Max duration (s)</Label>
+                  <Input
+                    type="number"
+                    step={0.1}
+                    defaultValue={selectedRulesSeed.maxDuration ?? ""}
+                    onChange={(e) =>
+                      patchSelectedRules({
+                        maxDuration: e.target.value === "" ? undefined : Number(e.target.value),
+                      })
+                    }
+                    className="h-8 text-xs"
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label className="text-xs">Intensity</Label>
+                  <Select
+                    defaultValue={selectedRulesSeed.intensity}
+                    onValueChange={(v) => patchSelectedRules({ intensity: v as AssetIntensity })}
+                  >
+                    <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {INTENSITIES.map((i) => (
+                        <SelectItem key={i} value={i}>{i}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label className="text-xs">Preferred section</Label>
+                  <Select
+                    defaultValue={selectedRulesSeed.preferredSection}
+                    onValueChange={(v) => patchSelectedRules({ preferredSection: v as EditSection })}
+                  >
+                    <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {SECTIONS.map((s) => (
+                        <SelectItem key={s} value={s}>{s}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label className="text-xs">Avoid section</Label>
+                  <Select
+                    defaultValue={selectedRulesSeed.avoidSection ?? "none"}
+                    onValueChange={(v) =>
+                      patchSelectedRules({ avoidSection: v === "none" ? undefined : (v as EditSection) })
+                    }
+                  >
+                    <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">none</SelectItem>
+                      {SECTIONS.map((s) => (
+                        <SelectItem key={s} value={s}>{s}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="col-span-2 flex flex-wrap items-center gap-4 md:col-span-3">
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      checked={selectedRulesSeed.mayOverlapText}
+                      onCheckedChange={(v) => patchSelectedRules({ mayOverlapText: v })}
+                    />
+                    <Label className="text-xs">May overlap text</Label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      checked={selectedRulesSeed.mayOverlapProduct}
+                      onCheckedChange={(v) => patchSelectedRules({ mayOverlapProduct: v })}
+                    />
+                    <Label className="text-xs">May overlap product</Label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      checked={selectedRulesSeed.mayOverlapEffect}
+                      onCheckedChange={(v) => patchSelectedRules({ mayOverlapEffect: v })}
+                    />
+                    <Label className="text-xs">May overlap effect</Label>
+                  </div>
+                </div>
+              </CollapsibleContent>
+            </Collapsible>
+          )}
+
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+            {drafts.map((d) => (
+              <DraftTile
+                key={d.id}
+                draft={d}
+                selected={selected.has(d.id)}
+                onToggleSelect={() => toggleDraftSelect(d.id)}
+                onPatch={(p) => patchDraft(d.id, p)}
+                onRemove={() => removeDrafts(new Set([d.id]))}
+              />
+            ))}
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <SliderField label={`Speed ${draft.speed.toFixed(2)}x`} value={draft.speed} min={0.1} max={3} step={0.05} onChange={(v) => patch({ speed: v })} />
-            <SliderField label={`Scale ${draft.scale.toFixed(2)}x`} value={draft.scale} min={0.1} max={3} step={0.05} onChange={(v) => patch({ scale: v })} />
-            <SliderField label={`X ${(draft.x * 100).toFixed(0)}%`} value={draft.x} min={-1} max={1} step={0.01} onChange={(v) => patch({ x: v })} />
-            <SliderField label={`Y ${(draft.y * 100).toFixed(0)}%`} value={draft.y} min={-1} max={1} step={0.01} onChange={(v) => patch({ y: v })} />
-            <SliderField label={`Opacity ${(draft.opacity * 100).toFixed(0)}%`} value={draft.opacity} min={0} max={1} step={0.01} onChange={(v) => patch({ opacity: v })} />
-            <SliderField label={`Duration ${draft.duration.toFixed(1)}s`} value={draft.duration} min={0.2} max={12} step={0.1} onChange={(v) => patch({ duration: v })} />
-          </div>
-
-          <div className="flex items-center gap-6">
-            <div className="flex items-center gap-2">
-              <Switch checked={draft.loop} onCheckedChange={(v) => patch({ loop: v })} />
-              <Label>Loop</Label>
-            </div>
-            <div className="flex items-center gap-2">
-              <Switch checked={draft.reverse} onCheckedChange={(v) => patch({ reverse: v })} />
-              <Label>Reverse</Label>
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-1.5">
-            <Label>Add to Motion Kit</Label>
-            <Select value={draft.kitKey} onValueChange={(v) => patch({ kitKey: v })}>
-              <SelectTrigger><SelectValue placeholder="No kit" /></SelectTrigger>
-              <SelectContent>
-                {MOTION_PACKS.map((p) => (
-                  <SelectItem key={p.key} value={p.key}>{p.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="flex justify-end gap-2">
-            <Button variant="ghost" onClick={() => { URL.revokeObjectURL(draft.url); setDraft(null); }}>
-              Cancel
+          <div className="flex items-center justify-end gap-3">
+            {importing && (
+              <span className="text-xs text-muted-foreground">
+                Importing {progress}/{drafts.length}…
+              </span>
+            )}
+            <Button onClick={handleImportAll} disabled={importing}>
+              Import {drafts.length} asset{drafts.length === 1 ? "" : "s"}
             </Button>
-            <Button onClick={handleSave}>Add to Motion Kit &amp; Save</Button>
           </div>
         </div>
       )}
 
       <div className="flex flex-col gap-2">
-        <Label className="text-xs uppercase tracking-wide text-muted-foreground">Library ({grouped.length})</Label>
-        <div className="flex flex-col gap-2">
-          {grouped.map((asset) => (
-            <AssetRow key={asset.id} asset={asset} />
-          ))}
-          {grouped.length === 0 && (
-            <p className="text-xs text-muted-foreground">No motion assets imported yet.</p>
+        <Label className="text-xs uppercase tracking-wide text-muted-foreground">
+          Library ({assets.length})
+        </Label>
+        <MotionAssetGrid
+          assets={assets}
+          selectedIds={gridSelected}
+          onToggleSelect={(id) =>
+            setGridSelected((s) => {
+              const next = new Set(s);
+              if (next.has(id)) next.delete(id);
+              else next.add(id);
+              return next;
+            })
+          }
+        />
+        {gridSelected.size > 0 && (
+          <div className="flex items-center gap-2 pt-1">
+            <span className="text-xs text-muted-foreground">{gridSelected.size} selected</span>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="gap-1 text-destructive"
+              onClick={() => {
+                gridSelected.forEach((id) => deleteMotionAsset(id));
+                setGridSelected(new Set());
+              }}
+            >
+              <X className="h-3.5 w-3.5" /> Delete
+            </Button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function DraftTile({
+  draft,
+  selected,
+  onToggleSelect,
+  onPatch,
+  onRemove,
+}: {
+  draft: Draft;
+  selected: boolean;
+  onToggleSelect: () => void;
+  onPatch: (p: Partial<Draft>) => void;
+  onRemove: () => void;
+}) {
+  const kind = assetKind({ mime: draft.file.type, fileName: draft.file.name });
+  const compat = renderCompat({ mime: draft.file.type, fileName: draft.file.name });
+
+  return (
+    <div
+      className={cn(
+        "flex flex-col gap-2 rounded-xl border bg-card p-2",
+        selected ? "border-primary ring-1 ring-primary/50" : "border-border",
+      )}
+    >
+      <div className="relative aspect-square w-full overflow-hidden rounded-lg bg-muted">
+        <div className="absolute inset-0 flex items-center justify-center">
+          {draft.thumb ? (
+            <img src={draft.thumb} alt="" className="h-full w-full object-cover" />
+          ) : kind === "image" || kind === "svg" ? (
+            <img src={draft.url} alt="" className="h-full w-full object-cover" />
+          ) : (
+            <DraftKindIcon draft={draft} />
           )}
         </div>
-      </div>
-    </div>
-  );
-}
-
-function SliderField({
-  label,
-  value,
-  min,
-  max,
-  step,
-  onChange,
-}: {
-  label: string;
-  value: number;
-  min: number;
-  max: number;
-  step: number;
-  onChange: (v: number) => void;
-}) {
-  return (
-    <div className="flex flex-col gap-1.5">
-      <Label className="text-xs">{label}</Label>
-      <Slider value={[value]} min={min} max={max} step={step} onValueChange={([v]) => onChange(v ?? value)} />
-    </div>
-  );
-}
-
-function AssetRow({ asset }: { asset: MotionAsset }) {
-  return (
-    <div className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2">
-      <div className="flex min-w-0 flex-col">
-        <span className="truncate text-sm">{asset.name}</span>
-        <div className="mt-0.5 flex flex-wrap items-center gap-1">
-          <Badge variant="outline" className="text-[10px]">{asset.category}</Badge>
-          {asset.kitKeys.map((k) => (
-            <Badge key={k} variant="secondary" className="text-[10px]">{k}</Badge>
-          ))}
+        {draft.probing && (
+          <div className="absolute inset-0 flex items-center justify-center bg-background/60 text-[10px] text-muted-foreground">
+            probing…
+          </div>
+        )}
+        <div className="absolute left-1.5 top-1.5">
+          <Checkbox checked={selected} onCheckedChange={onToggleSelect} className="bg-background/80" />
         </div>
+        <button
+          type="button"
+          onClick={() => onPatch({ favorite: !draft.favorite })}
+          className="absolute right-1.5 top-1.5 rounded-full bg-background/70 p-1 text-muted-foreground hover:text-rose-400"
+        >
+          <Heart className={cn("h-3.5 w-3.5", draft.favorite && "fill-rose-500 text-rose-500")} />
+        </button>
+        <button
+          type="button"
+          onClick={onRemove}
+          className="absolute bottom-1.5 right-1.5 rounded-full bg-background/70 p-1 text-muted-foreground hover:text-destructive"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
       </div>
-      <div className="flex items-center gap-2">
-        <Select value={asset.quality} onValueChange={(v) => updateMotionAsset(asset.id, { quality: v as MotionAssetQuality })}>
-          <SelectTrigger className="h-8 w-[130px] text-xs"><SelectValue /></SelectTrigger>
+
+      <Input
+        value={draft.name}
+        onChange={(e) => onPatch({ name: e.target.value })}
+        className="h-7 text-xs"
+      />
+
+      <div className="grid grid-cols-2 gap-1.5">
+        <Select value={draft.category} onValueChange={(v) => onPatch({ category: v as MotionAssetCategory })}>
+          <SelectTrigger className="h-7 text-[11px]"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {MOTION_ASSET_CATEGORIES.map((c) => (
+              <SelectItem key={c} value={c}>{c}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={draft.role} onValueChange={(v) => onPatch({ role: v as MotionAssetRole })}>
+          <SelectTrigger className="h-7 text-[11px]"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {MOTION_ASSET_ROLES.map((r) => (
+              <SelectItem key={r} value={r}>{r}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={draft.quality} onValueChange={(v) => onPatch({ quality: v as MotionAssetQuality })}>
+          <SelectTrigger className="h-7 text-[11px]"><SelectValue /></SelectTrigger>
           <SelectContent>
             {MOTION_ASSET_QUALITIES.map((q) => (
               <SelectItem key={q} value={q}>{q}</SelectItem>
             ))}
           </SelectContent>
         </Select>
-        <Button size="sm" variant="ghost" onClick={() => deleteMotionAsset(asset.id)}>
-          Delete
-        </Button>
+        <Select
+          value={draft.rules.intensity}
+          onValueChange={(v) => onPatch({ rules: { ...draft.rules, intensity: v as AssetIntensity } })}
+        >
+          <SelectTrigger className="h-7 text-[11px]"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {INTENSITIES.map((i) => (
+              <SelectItem key={i} value={i}>{i}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
+
+      {compat.level !== "verified" && (
+        <p className="rounded-md border border-amber-500/30 bg-amber-500/10 px-1.5 py-1 text-[10px] leading-tight text-amber-300">
+          {compat.note}
+        </p>
+      )}
     </div>
   );
 }

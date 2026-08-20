@@ -203,6 +203,15 @@ function Index() {
         const card = endCardsForBrand(activeBrand.id)[0];
         if (card) spec = appendEndCard(spec, card, activeBrand);
       }
+      // Restraint + contrast: decide the treatment budget and spend it on the
+      // best available material (approved imports first, kernels after).
+      spec = composeMotion(spec, {
+        effectAmount,
+        source: creativeSource,
+        pack: motion ?? null,
+        ...(activeBrand ? { brandId: activeBrand.id } : {}),
+        ...(pack ? { styleTags: [pack.key] } : {}),
+      }).spec;
       return spec;
     });
     if (musicFirst && audio?.beatMap) out = out.map((s) => syncSpecToTrack(s, audio, 0.7));
