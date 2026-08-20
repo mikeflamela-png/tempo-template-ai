@@ -18,6 +18,7 @@ import { LAYOUT_GROUPS, type LayoutGroupKey } from "./layouts";
 import { RHYTHMS, rhythmByKey } from "./rhythm";
 import { FONTS, fontByKey, fontsIn } from "./fonts";
 import { noveltyScore, pickNovel, remember } from "./novelty";
+import { planCreativeMoments } from "@/lib/creative/plan";
 
 /* ------------------------------------------------------------------ options */
 
