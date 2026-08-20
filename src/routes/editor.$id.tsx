@@ -32,6 +32,9 @@ import { TextInspector } from "@/components/editor/TextInspector";
 import { ExportDialog } from "@/components/editor/ExportDialog";
 import { MomentEditor } from "@/components/editor/MomentEditor";
 import VariationMatrix from "@/components/creative/VariationMatrix";
+import SwapMotion from "@/components/editor/SwapMotion";
+import SafeAreas, { SAFE_AREAS, type Platform as SafePlatform } from "@/components/editor/SafeAreas";
+import { runTemplateQA } from "@/lib/template/qa";
 import FeedbackDialog from "@/components/taste/FeedbackDialog";
 import { brandById, copyKitById, useBrandStore } from "@/lib/brand/store";
 import { Heart, ThumbsDown } from "lucide-react";
@@ -88,6 +91,7 @@ function EditorPage() {
   const [syncedSpec, setSyncedSpec] = useState<TemplateSpec | null>(null);
   const [playhead, setPlayhead] = useState(0);
   const [feedback, setFeedback] = useState<"love" | "dislike" | null>(null);
+  const [safePlatform, setSafePlatform] = useState<SafePlatform | null>(null);
   const brandStore = useBrandStore();
   const activeBrand = brandById(brandStore.activeKitId);
   const activeCopy = copyKitById(brandStore.activeCopyId);
@@ -342,16 +346,45 @@ function EditorPage() {
               className="max-h-full overflow-hidden rounded-2xl border border-border bg-black"
               style={{ aspectRatio: `${spec.width} / ${spec.height}`, height: "100%" }}
             >
-              <TemplatePlayer
-                ref={playerRef}
-                spec={spec}
-                media={previewMedia}
-                textOverrides={texts}
-                audio={audio}
-                controls
-                loop
-              />
+              <div className="relative h-full w-full">
+                <TemplatePlayer
+                  ref={playerRef}
+                  spec={spec}
+                  media={previewMedia}
+                  textOverrides={texts}
+                  audio={audio}
+                  controls
+                  loop
+                />
+                {safePlatform && (
+                  <SafeAreas platform={safePlatform} width={spec.width} height={spec.height} />
+                )}
+              </div>
             </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 border-t border-border px-4 py-2">
+            <span className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+              Safe areas
+            </span>
+            <button
+              onClick={() => setSafePlatform(null)}
+              className={`rounded-full px-2.5 py-1 text-[11px] ${
+                safePlatform === null ? "bg-foreground text-background" : "text-muted-foreground"
+              }`}
+            >
+              Off
+            </button>
+            {(Object.keys(SAFE_AREAS) as SafePlatform[]).map((k) => (
+              <button
+                key={k}
+                onClick={() => setSafePlatform(k)}
+                className={`rounded-full px-2.5 py-1 text-[11px] ${
+                  safePlatform === k ? "bg-foreground text-background" : "text-muted-foreground"
+                }`}
+              >
+                {SAFE_AREAS[k].label}
+              </button>
+            ))}
           </div>
           <Timeline
             spec={spec}
@@ -391,6 +424,17 @@ function EditorPage() {
               setEdits((prev) => ({ ...prev, ...next }));
             }}
           />
+          <SwapMotion
+            spec={spec}
+            media={previewMedia}
+            textOverrides={texts}
+            audio={audio}
+            onApply={(next) => {
+              setSyncedSpec(next);
+              setEdits((prev) => ({ ...prev, ...next }));
+            }}
+          />
+          <QAPanel spec={spec} media={previewMedia} platform={safePlatform} />
           <MomentEditor
             spec={spec}
             media={previewMedia}
@@ -683,6 +727,49 @@ function Adjust({
         step={step}
         onValueChange={(v) => onChange(Number((v[0] ?? value).toFixed(2)))}
       />
+    </div>
+  );
+}
+
+function QAPanel({
+  spec,
+  media,
+  platform,
+}: {
+  spec: TemplateSpec;
+  media: MediaMap;
+  platform: SafePlatform | null;
+}) {
+  const result = useMemo(
+    () => runTemplateQA(spec, { media, ...(platform ? { platform } : {}) }),
+    [spec, media, platform],
+  );
+  return (
+    <div>
+      <h2 className="mb-2 flex items-center justify-between text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
+        <span>Template QA</span>
+        <span className={result.passed ? "text-primary" : "text-destructive"}>
+          {Math.round(result.score * 100)}
+        </span>
+      </h2>
+      <ul className="space-y-1">
+        {result.checks.map((c) => (
+          <li key={c.id} className="flex items-start gap-2 text-[11px]">
+            <span
+              className={`mt-1 size-1.5 shrink-0 rounded-full ${
+                c.status === "pass"
+                  ? "bg-primary"
+                  : c.status === "warn"
+                    ? "bg-amber-400"
+                    : "bg-destructive"
+              }`}
+            />
+            <span className="text-muted-foreground">
+              <span className="text-foreground">{c.label}</span> — {c.detail}
+            </span>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

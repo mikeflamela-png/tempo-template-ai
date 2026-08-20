@@ -31,6 +31,7 @@ import { applyBrand } from "@/lib/brand/apply";
 import { applyTypeSystems, typeSystemsForBrand } from "@/lib/brand/typesystems";
 import { appendEndCard, endCardsForBrand } from "@/lib/brand/endcards";
 import { rankByTaste } from "@/lib/taste/profile";
+import { regenerateGuard } from "@/lib/template/qa";
 import { MOTION_PACKS, packByKey, applyMotionPack } from "@/lib/motion/packs";
 import { allBlueprints, blueprintById, applyBlueprint, useBlueprints } from "@/lib/blueprint/library";
 import { Link } from "@tanstack/react-router";
@@ -212,6 +213,11 @@ function Index() {
         1 - Math.min(1, Math.abs((s.creativeEvents ?? []).length / shots - w.effectDensity));
       return (shotFit + textFit + fxFit) / 3;
     });
+    // Reject weak output before it ever reaches the user.
+    out = regenerateGuard(out, {
+      ...(activeBrand ? { brand: activeBrand } : {}),
+      ...(activeCopy ? { copy: activeCopy } : {}),
+    }).map((r) => r.spec);
     return out;
   };
 
