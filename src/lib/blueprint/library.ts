@@ -25,6 +25,19 @@ export interface BlueprintBlock {
   note?: string;
 }
 
+export interface MotionSlot {
+  key: string;
+  name: string;
+  categories: string[];
+  minDuration: number;
+  maxDuration: number;
+  intensity: number;
+  optional: boolean;
+  styleTags: string[];
+  /** normalized 0-1 position along the timeline, if known */
+  at?: number;
+}
+
 export interface Blueprint {
   id: string;
   name: string;
@@ -32,6 +45,8 @@ export interface Blueprint {
   source: "builtin" | "custom";
   blocks: BlueprintBlock[];
   bestFor: string[];
+  /** semantic motion beats (opening accent, transition event, etc.) */
+  motionSlots?: MotionSlot[];
 }
 
 const bp = (
@@ -40,7 +55,20 @@ const bp = (
   blurb: string,
   bestFor: string[],
   blocks: BlueprintBlock[],
-): Blueprint => ({ id, name, blurb, source: "builtin", blocks, bestFor });
+  motionSlots?: MotionSlot[],
+): Blueprint => ({ id, name, blurb, source: "builtin", blocks, bestFor, motionSlots });
+
+const slot = (
+  key: string,
+  name: string,
+  categories: string[],
+  minDuration: number,
+  maxDuration: number,
+  intensity: number,
+  optional: boolean,
+  styleTags: string[],
+  at?: number,
+): MotionSlot => ({ key, name, categories, minDuration, maxDuration, intensity, optional, styleTags, at });
 
 export const BUILTIN_BLUEPRINTS: Blueprint[] = [
   bp("hook_proof_cta", "Hook → Proof → CTA", "The dependable direct-response shape.", ["Ads", "DTC"], [
