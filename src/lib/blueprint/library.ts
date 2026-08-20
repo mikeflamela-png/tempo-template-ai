@@ -201,15 +201,20 @@ export function applyBlueprint(spec: TemplateSpec, blueprint?: Blueprint | null)
   const spine = spec.mediaSlots.filter((s) => s.layout === "full").sort((a, b) => a.start - b.start);
   if (!spine.length) return spec;
 
+  // shots absorb the time of the text beats that sit inside them, so the
+  // full-screen spine stays gapless
   const shotBlocks = timeline.filter((b) => b.kind !== "text_beat");
   const newSpine = shotBlocks.map((block, i) => {
     const src = spine[i % spine.length]!;
+    const next = shotBlocks[i + 1];
+    const start = i === 0 ? 0 : block.start;
+    const end = next ? next.start : spec.duration;
     return {
       ...src,
       id: `bp_${block.kind}_${i + 1}`,
       label: block.kind.replace("_", " ").toUpperCase(),
-      start: block.start,
-      duration: block.duration,
+      start: Number(start.toFixed(2)),
+      duration: Number(Math.max(0.3, end - start).toFixed(2)),
       purpose: PURPOSE_OF[block.kind],
     };
   });
@@ -225,21 +230,31 @@ export function applyBlueprint(spec: TemplateSpec, blueprint?: Blueprint | null)
     })
     .filter((s) => s.start + s.duration <= spec.duration + 0.01);
 
-  const textBlocks = timeline.filter((b) => b.kind === "text_beat");
   const endBlock = timeline.find((b) => b.kind === "end_card");
   const sortedText = [...spec.textSlots].sort((a, b) => a.start - b.start);
   const cta = sortedText.find((t) => t.label === "CTA" || t.style === "cta_lockup");
   const rest = sortedText.filter((t) => t !== cta);
 
+  // anchors: every text beat first, then the remaining shots — one line each,
+  // so copy never stacks on top of itself
+  const anchors = [
+    ...timeline.filter((b) => b.kind === "text_beat"),
+    ...timeline.filter((b) => b.kind !== "text_beat" && b.kind !== "end_card"),
+  ]
+    .sort((a, b) => a.start - b.start)
+    .slice(0, Math.max(1, rest.length));
+
   const textSlots: TextSlot[] = rest.map((t, i) => {
-    const block = textBlocks[i % Math.max(1, textBlocks.length)];
+    const block = anchors[i];
     if (!block) return t;
+    const limit = endBlock ? endBlock.start : spec.duration;
     const duration = Math.min(
-      Math.max(0.6, block.duration * 1.2),
-      spec.duration - block.start - 0.05,
+      Math.max(0.6, block.duration * 1.1),
+      Math.max(0.6, limit - block.start - 0.05),
     );
     return { ...t, start: block.start, duration: Number(duration.toFixed(2)) };
   });
+
   if (cta) {
     const start = endBlock ? endBlock.start : Math.max(0, spec.duration - 2);
     textSlots.push({
