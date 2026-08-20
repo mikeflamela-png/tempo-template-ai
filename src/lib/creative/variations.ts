@@ -199,7 +199,9 @@ function mutateMotionKit(spec: TemplateSpec, rng: Rng): TemplateSpec {
   const pickTransition = (): Transition => TRANSITIONS[Math.floor(rng() * TRANSITIONS.length)]!;
   const pickAnim = (): Animation => ANIMATIONS[Math.floor(rng() * ANIMATIONS.length)]!;
   const mediaSlots = spec.mediaSlots.map((s) =>
-    s.transitionOut ? { ...s, transitionOut: pickTransition(), animationIn: s.animationIn ? pickAnim() : s.animationIn } : s,
+    s.transitionOut
+      ? { ...s, transitionOut: pickTransition(), ...(s.animationIn ? { animationIn: pickAnim() } : {}) }
+      : s,
   );
   const creativeEvents = spec.creativeEvents?.map((e) => ({ ...e, seed: Math.floor(rng() * 1e6) }));
   return { ...spec, mediaSlots, creativeEvents };
@@ -213,8 +215,8 @@ function mutateMotionSlots(spec: TemplateSpec, rng: Rng): TemplateSpec {
     const j = Math.floor(rng() * (i + 1));
     const a = shuffled[i]!;
     const b = shuffled[j]!;
-    shuffled[i] = { ...a, start: b.start, slotKey: b.slotKey };
-    shuffled[j] = { ...b, start: a.start, slotKey: a.slotKey };
+    shuffled[i] = { ...a, start: b.start, ...(b.slotKey ? { slotKey: b.slotKey } : {}) };
+    shuffled[j] = { ...b, start: a.start, ...(a.slotKey ? { slotKey: a.slotKey } : {}) };
   }
   return { ...spec, motionAssets: shuffled };
 }
@@ -282,7 +284,10 @@ function mutateTypeSystem(spec: TemplateSpec, rng: Rng): TemplateSpec {
     ...spec,
     fontKey: font.key,
     typeSystemIds: [font.key],
-    textSlots: spec.textSlots.map((t) => ({ ...t, fontKey: undefined })),
+    textSlots: spec.textSlots.map((t) => {
+      const { fontKey: _drop, ...rest } = t;
+      return rest as typeof t;
+    }),
   };
 }
 
@@ -413,7 +418,9 @@ export function brandSwap(
   const logo = toKit.assets.find((a) => a.kind === "logo");
   next = {
     ...next,
-    endCardId: endcard?.id ?? logo?.id ?? next.endCardId,
+    ...(endcard?.id ?? logo?.id ?? next.endCardId
+      ? { endCardId: (endcard?.id ?? logo?.id ?? next.endCardId) as string }
+      : {}),
     parentId: base.id,
     versionLabel: `Brand swap → ${toKit.name}`,
     tags: [...new Set([...(next.tags ?? []), "brand-swap"])],

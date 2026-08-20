@@ -218,7 +218,7 @@ export default function TypeSystemPanel({ brandId }: { brandId: string }) {
 
                 <div className="space-y-1.5">
                   <Label>Font</Label>
-                  <Select value={selected.fontId ?? "none"} onValueChange={(v) => update({ fontId: v === "none" ? undefined : v })}>
+                  <Select value={selected.fontId ?? "none"} onValueChange={(v) => update(v === "none" ? ({ fontId: "" } as Partial<TypeSystem>) : { fontId: v })}>
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
