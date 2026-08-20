@@ -283,8 +283,8 @@ async function analyzeVideoFile(
     const bucketCounts: number[] = new Array(buckets).fill(0);
     frameDelta.forEach((d, i) => {
       const b = Math.min(buckets - 1, Math.floor((i / frameDelta.length) * buckets));
-      densityCurve[b] += d;
-      bucketCounts[b] += 1;
+      densityCurve[b] = (densityCurve[b] ?? 0) + d;
+      bucketCounts[b] = (bucketCounts[b] ?? 0) + 1;
     });
     const maxBucket = Math.max(1, ...densityCurve.map((v, i) => (bucketCounts[i] ? v / bucketCounts[i] : 0)));
     for (let i = 0; i < buckets; i++) {

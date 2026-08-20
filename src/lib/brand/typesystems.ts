@@ -298,7 +298,7 @@ function applySystemToSlot(slot: TextSlot, system: TypeSystem): TextSlot {
     ...(system.color ?? slot.color ? { color: (system.color ?? slot.color) as string } : {}),
     stroke: system.stroke,
     ...(system.strokeColor ?? slot.strokeColor ? { strokeColor: (system.strokeColor ?? slot.strokeColor) as string } : {}),
-    background: system.background === "none" ? undefined : system.background,
+    ...(system.background === "none" ? {} : { background: system.background }),
     style: system.animation,
     position: system.position,
   };

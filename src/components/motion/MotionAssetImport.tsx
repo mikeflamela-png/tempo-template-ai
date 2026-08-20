@@ -108,7 +108,9 @@ function AssetPreviewMedia({ draft }: { draft: Draft }) {
           autoPlay
           muted
           loop={draft.loop}
-          playbackRate={draft.speed}
+          ref={(el) => {
+            if (el) el.playbackRate = Math.max(0.1, draft.speed);
+          }}
           style={{ maxWidth: "100%", maxHeight: "100%" }}
         />
       ) : kind === "audio" ? (
