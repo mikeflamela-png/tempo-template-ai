@@ -202,7 +202,7 @@ function EditorPage() {
         <section className="flex min-w-0 flex-col items-center justify-center gap-4 bg-black/40 p-6">
           <div
             className="max-h-[70vh] max-w-full overflow-hidden rounded-2xl border border-border bg-black"
-            style={{ aspectRatio: `${spec.width} / ${spec.height}` }}
+            style={{ aspectRatio: `${spec.width} / ${spec.height}`, height: "70vh" }}
           >
             <TemplatePlayer
               ref={playerRef}
