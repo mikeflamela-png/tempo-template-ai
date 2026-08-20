@@ -49,7 +49,7 @@ export function ExportDialog({ spec, media, textOverrides, audio }: Props) {
   const [status, setStatus] = useState<RenderStatus>({ stage: "idle", progress: 0, message: "" });
   const timer = useRef<number | null>(null);
 
-  const brand = brandById(store.activeBrandId);
+  const brand = brandById(store.activeKitId);
   const copy = copyKitById(store.activeCopyId);
 
   const job = useCallback(
