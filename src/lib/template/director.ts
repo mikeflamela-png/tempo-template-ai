@@ -595,18 +595,24 @@ export function composeConcept(
 ): TemplateSpec {
   let best: TemplateSpec | null = null;
   let bestScore = Infinity;
+  const finish = (spec: TemplateSpec) =>
+    planCreativeMoments(spec, {
+      seed,
+      ...(opts.risk !== undefined ? { risk: opts.risk } : {}),
+      tags: [...(spec.tags ?? []), ...(opts.aesthetic ? [String(opts.aesthetic)] : [])],
+    });
   for (let attempt = 0; attempt < 8; attempt++) {
     const rng = mulberry32(seed + attempt * 7919);
     const direction = directionOverride ?? buildDirection(concept, opts, rng);
     const spec = buildSpec(direction, concept, opts, seed + attempt * 104729, nameOverride);
     const issues = qualityIssues(spec);
-    if (issues.length === 0) return spec;
+    if (issues.length === 0) return finish(spec);
     if (issues.length < bestScore) {
       bestScore = issues.length;
       best = spec;
     }
   }
-  return best!;
+  return finish(best!);
 }
 
 export { CONCEPTS, conceptByKey, fontByKey };
