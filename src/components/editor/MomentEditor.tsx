@@ -15,9 +15,99 @@ interface Props {
   media: MediaMap;
   playhead: number;
   onChange: (events: CreativeEvent[]) => void;
+  /** Optional: lets contextual commands retime shots/text inside the region. */
+  onPatchSpec?: (patch: Partial<TemplateSpec>) => void;
 }
 
-export function MomentEditor({ spec, media, playhead, onChange }: Props) {
+/**
+ * Contextual editing commands. Each one is a real, local operation: it seeds the
+ * alternative generator with a specific creative intent AND optionally retimes
+ * or thins the selected region only — the rest of the edit is untouched.
+ */
+type RegionOp = (spec: TemplateSpec, from: number, to: number) => Partial<TemplateSpec>;
+
+const inRegion = (start: number, dur: number, from: number, to: number) =>
+  start < to && start + dur > from;
+
+const COMMANDS: { label: string; prompt: string; op?: RegionOp }[] = [
+  { label: "Make this better", prompt: "one confident, well-timed accent — nothing decorative" },
+  {
+    label: "Cleaner",
+    prompt: "restrained, one idea only, generous negative space",
+    op: (sp, f, t) => ({
+      creativeEvents: (sp.creativeEvents ?? []).filter((e) => !inRegion(e.start, e.duration, f, t)),
+    }),
+  },
+  { label: "More filmic", prompt: "handheld weight, halation, film grain, soft exposure shift" },
+  { label: "More editorial", prompt: "paper edge, printed caption, typographic restraint" },
+  { label: "More social", prompt: "punchy hook energy, quick pops, a caption that lands fast" },
+  { label: "Less AI-looking", prompt: "organic masks, hand-torn edges, off-grid placement, no clean rectangles" },
+  { label: "Weirder", prompt: "an unexpected interruption — scribble, freeze, jump in scale" },
+  { label: "Add a product moment", prompt: "isolate the product with a scale punch and a held beat" },
+  { label: "Add a graphic moment", prompt: "a drawn badge, arrow or ticker over the footage" },
+  {
+    label: "Simplify this section",
+    prompt: "strip it back to footage and one word",
+    op: (sp, f, t) => ({
+      creativeEvents: (sp.creativeEvents ?? []).filter((e) => !inRegion(e.start, e.duration, f, t)),
+      graphicSlots: (sp.graphicSlots ?? []).filter((g) => !inRegion(g.start, g.duration, f, t)),
+    }),
+  },
+  {
+    label: "Hit the music",
+    prompt: "cut exactly on the beat",
+    op: (sp, f, t) => {
+      const beats = sp.beatMarkers ?? [];
+      if (!beats.length) return {};
+      const snap = (v: number) =>
+        beats.reduce((best, b) => (Math.abs(b - v) < Math.abs(best - v) ? b : best), v);
+      return {
+        mediaSlots: sp.mediaSlots.map((m) => {
+          if (!inRegion(m.start, m.duration, f, t)) return m;
+          const st = snap(m.start);
+          const en = Math.max(st + 0.2, snap(m.start + m.duration));
+          return { ...m, start: st, duration: en - st };
+        }),
+      };
+    },
+  },
+  {
+    label: "Stronger opening",
+    prompt: "an immediate hit in the first quarter second",
+    op: (sp) => ({
+      mediaSlots: sp.mediaSlots.map((m, i) =>
+        i === 0 ? { ...m, duration: Math.max(0.35, m.duration * 0.6) } : m,
+      ),
+    }),
+  },
+  {
+    label: "Stronger ending",
+    prompt: "a resolved final hold, the last word left on screen",
+    op: (sp) => {
+      const last = sp.mediaSlots[sp.mediaSlots.length - 1];
+      if (!last) return {};
+      return {
+        mediaSlots: sp.mediaSlots.map((m) =>
+          m.id === last.id ? { ...m, duration: m.duration + 0.4 } : m,
+        ),
+        duration: sp.duration + 0.4,
+      };
+    },
+  },
+  {
+    label: "More breathing room",
+    prompt: "let one shot hold longer, drop the clutter",
+    op: (sp, f, t) => ({
+      mediaSlots: sp.mediaSlots.map((m) =>
+        inRegion(m.start, m.duration, f, t) ? { ...m, duration: m.duration * 1.25 } : m,
+      ),
+      duration: sp.duration + 0.3,
+    }),
+  },
+];
+
+export function MomentEditor({ spec, media, playhead, onChange, onPatchSpec }: Props) {
+  const [command, setCommand] = useState<string | null>(null);
   const [prompt, setPrompt] = useState("");
   const [length, setLength] = useState(1.2);
   const [busy, setBusy] = useState(false);
@@ -45,6 +135,19 @@ export function MomentEditor({ spec, media, playhead, onChange }: Props) {
       );
       setBusy(false);
     }, 220);
+  };
+
+  const runCommand = (label: string) => {
+    const cmd = COMMANDS.find((c) => c.label === label);
+    if (!cmd) return;
+    setCommand(label);
+    setPrompt(cmd.prompt);
+    setBusy(true);
+    if (cmd.op && onPatchSpec) onPatchSpec(cmd.op(spec, start, start + length));
+    setTimeout(() => {
+      setAlts(momentAlternatives({ prompt: cmd.prompt, duration: length, count: 4 }));
+      setBusy(false);
+    }, 200);
   };
 
   const apply = (exp: Experiment) => {
@@ -87,6 +190,21 @@ export function MomentEditor({ spec, media, playhead, onChange }: Props) {
           placeholder="what should happen here?"
           className="mt-2"
         />
+        <div className="mt-2.5 flex flex-wrap gap-1.5">
+          {COMMANDS.map((c) => (
+            <button
+              key={c.label}
+              onClick={() => runCommand(c.label)}
+              className={`rounded-full border px-2.5 py-1 text-[11px] transition-colors ${
+                command === c.label
+                  ? "border-primary bg-primary/10 text-foreground"
+                  : "border-border text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {c.label}
+            </button>
+          ))}
+        </div>
         <Button size="sm" className="mt-2 w-full" onClick={run} disabled={busy}>
           {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Wand2 className="size-3.5" />}
           Generate 4 alternatives
