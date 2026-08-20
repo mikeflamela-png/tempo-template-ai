@@ -170,8 +170,10 @@ export function validateSpec(spec: TemplateSpec): string[] {
     .filter((s) => s.layout === "full")
     .sort((a, b) => a.start - b.start);
   for (let i = 1; i < spine.length; i++) {
-    const gap = spine[i].start - (spine[i - 1].start + spine[i - 1].duration);
-    if (gap > 0.35) errors.push(`gap before ${spine[i].id}`);
+    const cur = spine[i]!;
+    const prev = spine[i - 1]!;
+    const gap = cur.start - (prev.start + prev.duration);
+    if (gap > 0.35) errors.push(`gap before ${cur.id}`);
   }
   for (const t of spec.textSlots) {
     if (t.start + t.duration > spec.duration + 0.001)
