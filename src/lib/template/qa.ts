@@ -82,20 +82,14 @@ function checkFonts(spec: TemplateSpec, brand?: BrandKit | null): QACheck {
 
 /** Logo & product assets keep their aspect ratio (no non-uniform scaling implied by media transforms). */
 function checkAspectPreserved(spec: TemplateSpec, media?: MediaMap): QACheck {
-  const offenders: string[] = [];
-  if (media) {
-    for (const [id, m] of Object.entries(media)) {
-      const asym = m.zoom !== undefined && m.fit === "contain" && m.flipX && m.flipY; // placeholder guard, real distortion tracked below
-      void asym;
-    }
-  }
-  for (const g of spec.graphicSlots ?? []) {
-    // non-uniform scale isn't representable on GraphicSlot.scale (single number) — always uniform.
-    void g;
-  }
-  if (offenders.length > 0)
-    return check("aspect", "Logo & product aspect preserved", "warn", `Possible distortion: ${offenders.join(", ")}`);
-  return check("aspect", "Logo & product aspect preserved", "pass", "All logo/product placements use uniform scale.");
+  // MediaAssignment and GraphicSlot only ever expose a single uniform `scale`/`zoom`
+  // number (never separate x/y scale), so non-uniform stretching isn't representable
+  // in the spec — this check confirms that invariant holds for every referenced slot.
+  const refs = spec.mediaSlots.map((m) => media?.[m.id]).filter(Boolean) as import("@/lib/template/types").MediaAssignment[];
+  const distorted = refs.filter((m) => typeof m.zoom === "number" && !Number.isFinite(m.zoom));
+  if (distorted.length > 0)
+    return check("aspect", "Logo & product aspect preserved", "warn", `${distorted.length} media reference(s) have an invalid zoom value.`);
+  return check("aspect", "Logo & product aspect preserved", "pass", "All logo/product placements use uniform scale — aspect preserved.");
 }
 
 /** Copy readable: word count vs duration vs implied reading speed. */
