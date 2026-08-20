@@ -24,6 +24,8 @@ import { fontByKey } from "@/lib/template/fonts";
 import { placeholderFor } from "@/lib/template/placeholders";
 import { CreativeEventLayer } from "./CreativeEventLayer";
 import { GraphicLayer } from "./GraphicLayer";
+import { MotionAssetLayer } from "./MotionAssetLayer";
+
 
 
 /* ------------------------------------------------------------------ motion */
