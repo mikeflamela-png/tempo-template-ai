@@ -890,7 +890,7 @@ export function CreativeEventLayer({
         p={p}
         frame={frame}
         palette={spec.palette}
-        fontFamily={fontByKey(spec.fontKey).family}
+        fontFamily={fontByKey(spec.fontKey).stack}
         footage={footage}
         word={event.word ?? spec.textSlots[0]?.value}
         seed={event.seed ?? 7}

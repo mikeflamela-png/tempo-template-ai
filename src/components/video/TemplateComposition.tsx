@@ -22,6 +22,7 @@ import type {
 import { LAYOUT_BOXES } from "@/lib/template/layouts";
 import { fontByKey } from "@/lib/template/fonts";
 import { placeholderFor } from "@/lib/template/placeholders";
+import { CreativeEventLayer } from "./CreativeEventLayer";
 import { GraphicLayer } from "./GraphicLayer";
 
 
@@ -1145,6 +1146,18 @@ export const TemplateVideo: React.FC<TemplateVideoProps> = ({
           <TextLayer text={{ ...text, value: textOverrides[text.id] ?? text.value }} spec={spec} />
         </Sequence>
       ))}
+      {(spec.creativeEvents ?? [])
+        .filter((ev) => (ev.layer ?? "under_text") === "under_text")
+        .map((ev) => (
+          <Sequence
+            key={ev.id}
+            from={f(ev.start)}
+            durationInFrames={Math.max(2, f(ev.duration))}
+            layout="none"
+          >
+            <CreativeEventLayer event={ev} spec={spec} media={media} />
+          </Sequence>
+        ))}
       {(spec.graphicSlots ?? []).map((g) => (
         <Sequence
           key={g.id}
@@ -1155,6 +1168,18 @@ export const TemplateVideo: React.FC<TemplateVideoProps> = ({
           <GraphicLayer graphic={g} palette={spec.palette} fontKey={spec.fontKey} />
         </Sequence>
       ))}
+      {(spec.creativeEvents ?? [])
+        .filter((ev) => ev.layer === "over_all")
+        .map((ev) => (
+          <Sequence
+            key={ev.id}
+            from={f(ev.start)}
+            durationInFrames={Math.max(2, f(ev.duration))}
+            layout="none"
+          >
+            <CreativeEventLayer event={ev} spec={spec} media={media} />
+          </Sequence>
+        ))}
     </AbsoluteFill>
   );
 
