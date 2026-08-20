@@ -1,5 +1,16 @@
-import { useCallback, useRef, useState } from "react";
-import { Download, FileCode2, Loader2, Package } from "lucide-react";
+import { useCallback, useMemo, useRef, useState } from "react";
+import { Link } from "@tanstack/react-router";
+import {
+  AlertTriangle,
+  Check,
+  Copy,
+  Download,
+  FileCode2,
+  Info,
+  Loader2,
+  Package,
+  ShieldAlert,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -19,6 +30,10 @@ import {
 import { buildFcpxml } from "@/lib/render/fcpxml";
 import { downloadHandoff } from "@/lib/render/handoff";
 import { brandById, copyKitById, useBrandStore } from "@/lib/brand/store";
+import { endCardById } from "@/lib/brand/endcards";
+import { typeSystemsForBrand } from "@/lib/brand/typesystems";
+import { motionAssetById } from "@/lib/motion/assets";
+import { runPreflight, type PreflightIssue } from "@/lib/render/preflight";
 import type { AudioTrack, MediaMap, TemplateSpec } from "@/lib/template/types";
 
 interface Props {
@@ -41,16 +56,80 @@ function download(name: string, content: string, mime: string) {
   setTimeout(() => URL.revokeObjectURL(a.href), 4000);
 }
 
+const LEVEL_STYLE: Record<PreflightIssue["level"], string> = {
+  block: "border-destructive/50 bg-destructive/10",
+  warn: "border-amber-500/40 bg-amber-500/10",
+  info: "border-border bg-muted/40",
+};
+
+function LevelIcon({ level }: { level: PreflightIssue["level"] }) {
+  if (level === "block") return <ShieldAlert className="mt-0.5 size-3.5 shrink-0 text-destructive" />;
+  if (level === "warn") return <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-amber-400" />;
+  return <Info className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />;
+}
+
+function CopyableError({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-3">
+      <div className="mb-1.5 flex items-center justify-between">
+        <p className="text-[10px] uppercase tracking-widest text-destructive">Worker error</p>
+        <button
+          onClick={() => {
+            void navigator.clipboard.writeText(text).then(() => {
+              setCopied(true);
+              setTimeout(() => setCopied(false), 1500);
+            });
+          }}
+          className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground"
+        >
+          {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
+          {copied ? "Copied" : "Copy"}
+        </button>
+      </div>
+      <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-words font-mono text-[11px] text-foreground">
+        {text}
+      </pre>
+    </div>
+  );
+}
+
 export function ExportDialog({ spec, media, textOverrides, audio }: Props) {
   const store = useBrandStore();
   const [open, setOpen] = useState(false);
   const [format, setFormat] = useState<ExportFormat>("vertical");
   const [quality, setQuality] = useState<ExportQuality>("high");
   const [status, setStatus] = useState<RenderStatus>({ stage: "idle", progress: 0, message: "" });
+  const [ackWarnings, setAckWarnings] = useState(false);
+  const [notConfigured, setNotConfigured] = useState(false);
   const timer = useRef<number | null>(null);
 
   const brand = brandById(store.activeKitId);
   const copy = copyKitById(store.activeCopyId);
+
+  const issues = useMemo<PreflightIssue[]>(() => {
+    const typeSystems = brand ? typeSystemsForBrand(brand.id).filter((t) => spec.typeSystemIds?.includes(t.id)) : [];
+    const motionAssets = (spec.motionAssets ?? [])
+      .map((m) => motionAssetById(m.assetId))
+      .filter((a): a is NonNullable<typeof a> => Boolean(a));
+    const endCard = spec.endCardId ? endCardById(spec.endCardId) : null;
+    const uploadBytes = 0; // computed after files are read at submit time; not known up front
+    return runPreflight({
+      spec,
+      media,
+      audio,
+      brand,
+      typeSystems,
+      motionAssets,
+      endCard,
+      uploadBytes,
+    });
+  }, [spec, media, audio, brand]);
+
+  const blockingIssues = issues.filter((i) => i.level === "block");
+  const warnIssues = issues.filter((i) => i.level === "warn");
+  const infoIssues = issues.filter((i) => i.level === "info");
+  const canRender = blockingIssues.length === 0 && (warnIssues.length === 0 || ackWarnings);
 
   const job = useCallback(
     () =>
@@ -65,8 +144,9 @@ export function ExportDialog({ spec, media, textOverrides, audio }: Props) {
   );
 
   const start = useCallback(async () => {
-    setOpen(true);
+    if (!canRender) return;
     setStatus({ stage: "preparing", progress: 3, message: "Preparing composition…" });
+    setNotConfigured(false);
     const payload = job();
     payload.output.crf = QUALITIES.find((q) => q.key === quality)!.crf;
 
@@ -96,11 +176,11 @@ export function ExportDialog({ spec, media, textOverrides, audio }: Props) {
       const res = await fetch("/api/public/render", { method: "POST", body: form });
       const data = (await res.json()) as { configured: boolean; jobId?: string; error?: string };
       if (!data.configured) {
+        setNotConfigured(true);
         setStatus({
           stage: "error",
           progress: 0,
-          message:
-            "No render service connected. Deploy render-worker/ (Remotion + Chromium + ffmpeg) and set REMOTION_WORKER_URL — the deployment checklist is in render-worker/README.md.",
+          message: "No render service connected.",
         });
         return;
       }
@@ -150,7 +230,7 @@ export function ExportDialog({ spec, media, textOverrides, audio }: Props) {
       });
       toast.error("Export failed");
     }
-  }, [job, media, audio, quality]);
+  }, [canRender, job, media, audio, quality]);
 
   const active =
     status.stage === "preparing" ||
@@ -161,9 +241,55 @@ export function ExportDialog({ spec, media, textOverrides, audio }: Props) {
 
   const fmt = EXPORT_FORMATS.find((f) => f.key === format)!;
 
+  const handoff = () => (
+    <div className="rounded-lg border border-border p-3">
+      <p className="mb-2 text-[10px] uppercase tracking-widest text-muted-foreground">
+        Export for finishing
+      </p>
+      <div className="flex gap-2">
+        <Button
+          variant="secondary"
+          size="sm"
+          className="flex-1"
+          onClick={() => {
+            download(
+              `${spec.name.toLowerCase().replace(/\s+/g, "-")}.fcpxml`,
+              buildFcpxml({ projectName: "Tempo", spec, media, audio }),
+              "application/xml",
+            );
+            toast.success("FCPXML exported");
+          }}
+        >
+          <FileCode2 className="size-4" /> Final Cut XML
+        </Button>
+        <Button
+          variant="secondary"
+          size="sm"
+          className="flex-1"
+          onClick={() => {
+            downloadHandoff(
+              {
+                spec,
+                media,
+                audio,
+                brand,
+                copy,
+                ...(status.downloadUrl ? { referenceUrl: status.downloadUrl } : {}),
+              },
+              `${spec.name.toLowerCase().replace(/\s+/g, "-")}-handoff.zip`,
+            );
+            toast.success("Handoff package exported");
+          }}
+        >
+          <Package className="size-4" /> Handoff package
+        </Button>
+      </div>
+    </div>
+  );
+
   return (
     <>
-      <Button onClick={() => void start()} className="font-semibold">
+      <Button onClick={() => setOpen(true)} className="font-semibold">
         <Download className="size-4" /> Export MP4
       </Button>
       <Dialog
@@ -220,22 +346,89 @@ export function ExportDialog({ spec, media, textOverrides, audio }: Props) {
               ))}
             </div>
 
-            <div className="h-2 overflow-hidden rounded-full bg-muted">
-              <div
-                className="h-full bg-primary transition-[width] duration-300"
-                style={{ width: `${status.stage === "error" ? 0 : status.progress}%` }}
-              />
-            </div>
-            <p className="flex items-start gap-2 text-sm text-muted-foreground">
-              {active && <Loader2 className="mt-0.5 size-4 shrink-0 animate-spin" />}
-              <span>
-                <span className="uppercase tracking-widest text-[10px] text-foreground">
-                  {status.stage === "idle" ? "" : status.stage}
-                </span>{" "}
-                {status.stage === "rendering" ? `${status.progress}% — ` : ""}
-                {status.message}
-              </span>
-            </p>
+            {status.stage === "idle" && (
+              <div className="space-y-2">
+                <p className="text-[10px] uppercase tracking-widest text-muted-foreground">
+                  Preflight {issues.length === 0 && "· all clear"}
+                </p>
+                {issues.length === 0 ? (
+                  <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/30 p-3 text-xs text-muted-foreground">
+                    <Check className="size-3.5 text-emerald-400" /> Nothing to flag — ready to render.
+                  </div>
+                ) : (
+                  <div className="max-h-48 space-y-2 overflow-y-auto pr-1">
+                    {[...blockingIssues, ...warnIssues, ...infoIssues].map((issue, i) => (
+                      <div
+                        key={i}
+                        className={`flex gap-2 rounded-lg border p-2.5 text-xs ${LEVEL_STYLE[issue.level]}`}
+                      >
+                        <LevelIcon level={issue.level} />
+                        <div>
+                          <p className="font-semibold text-foreground">{issue.title}</p>
+                          <p className="mt-0.5 text-muted-foreground">{issue.detail}</p>
+                          {issue.fix && <p className="mt-1 text-muted-foreground/80">Fix: {issue.fix}</p>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {warnIssues.length > 0 && blockingIssues.length === 0 && (
+                  <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <input
+                      type="checkbox"
+                      checked={ackWarnings}
+                      onChange={(e) => setAckWarnings(e.target.checked)}
+                      className="size-3.5"
+                    />
+                    I understand these warnings and want to render anyway
+                  </label>
+                )}
+              </div>
+            )}
+
+            {status.stage === "idle" ? (
+              <Button className="w-full font-semibold" disabled={!canRender} onClick={() => void start()}>
+                <Download className="size-4" />
+                {blockingIssues.length > 0 ? "Fix blocking issues to render" : "Render MP4"}
+              </Button>
+            ) : (
+              <>
+                <div className="h-2 overflow-hidden rounded-full bg-muted">
+                  <div
+                    className="h-full bg-primary transition-[width] duration-300"
+                    style={{ width: `${status.stage === "error" ? 0 : status.progress}%` }}
+                  />
+                </div>
+                <p className="flex items-start gap-2 text-sm text-muted-foreground">
+                  {active && <Loader2 className="mt-0.5 size-4 shrink-0 animate-spin" />}
+                  <span>
+                    <span className="uppercase tracking-widest text-[10px] text-foreground">
+                      {status.stage}
+                    </span>{" "}
+                    {status.stage === "rendering" ? `${status.progress}% — ` : ""}
+                    {status.message}
+                  </span>
+                </p>
+              </>
+            )}
+
+            {notConfigured && (
+              <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-xs">
+                <p className="font-semibold text-amber-200">Server rendering is not connected</p>
+                <p className="mt-1 text-muted-foreground">
+                  No render worker is configured for this project, so there is no service that can
+                  turn this timeline into an actual MP4 file right now. Use the Final Cut XML or
+                  handoff package below, or connect a render worker.
+                </p>
+                <Button asChild variant="secondary" size="sm" className="mt-2">
+                  <Link to="/settings/rendering">Set up the render worker</Link>
+                </Button>
+              </div>
+            )}
+
+            {status.stage === "error" && !notConfigured && (
+              <CopyableError text={status.message} />
+            )}
 
             {status.downloadUrl && (
               <Button asChild className="w-full">
@@ -245,49 +438,7 @@ export function ExportDialog({ spec, media, textOverrides, audio }: Props) {
               </Button>
             )}
 
-            <div className="rounded-lg border border-border p-3">
-              <p className="mb-2 text-[10px] uppercase tracking-widest text-muted-foreground">
-                Export for finishing
-              </p>
-              <div className="flex gap-2">
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  className="flex-1"
-                  onClick={() => {
-                    download(
-                      `${spec.name.toLowerCase().replace(/\s+/g, "-")}.fcpxml`,
-                      buildFcpxml({ projectName: "Tempo", spec, media, audio }),
-                      "application/xml",
-                    );
-                    toast.success("FCPXML exported");
-                  }}
-                >
-                  <FileCode2 className="size-4" /> Final Cut XML
-                </Button>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  className="flex-1"
-                  onClick={() => {
-                    downloadHandoff(
-                      {
-                        spec,
-                        media,
-                        audio,
-                        brand,
-                        copy,
-                        ...(status.downloadUrl ? { referenceUrl: status.downloadUrl } : {}),
-                      },
-                      `${spec.name.toLowerCase().replace(/\s+/g, "-")}-handoff.zip`,
-                    );
-                    toast.success("Handoff package exported");
-                  }}
-                >
-                  <Package className="size-4" /> Handoff package
-                </Button>
-              </div>
-            </div>
+            {handoff()}
           </div>
         </DialogContent>
       </Dialog>
