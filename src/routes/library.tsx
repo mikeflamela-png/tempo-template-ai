@@ -5,6 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { TemplateCard } from "@/components/TemplateCard";
 import { Workbench } from "@/components/creative/Workbench";
+import MotionAssetImport from "@/components/motion/MotionAssetImport";
+import ReferenceImport from "@/components/reference/ReferenceImport";
+import GoldStandards from "@/components/taste/GoldStandards";
 import { RecipeBrowser, TechniqueBrowser } from "@/components/creative/TechniqueBrowser";
 import { LAYOUT_BOXES, LAYOUT_GROUPS } from "@/lib/template/layouts";
 import { GRAPHICS } from "@/lib/template/graphics";
@@ -48,6 +51,9 @@ const TABS = [
   "Fonts",
   "Style packs",
   "Concepts",
+  "Motion assets",
+  "Reference edits",
+  "Gold standards",
   "Invention Lab",
 ] as const;
 
@@ -145,6 +151,12 @@ function LibraryPage() {
         {tab === "Techniques" && <TechniqueBrowser />}
 
         {tab === "Recipes" && <RecipeBrowser />}
+
+        {tab === "Motion assets" && <MotionAssetImport />}
+
+        {tab === "Reference edits" && <ReferenceImport />}
+
+        {tab === "Gold standards" && <GoldStandards />}
 
         {tab === "Layouts" && (
           <div className="space-y-10">

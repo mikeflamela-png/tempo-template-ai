@@ -6,6 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Slider } from "@/components/ui/slider";
 import { fontByKey } from "@/lib/template/fonts";
+import TypeSystemPanel from "@/components/brand/TypeSystemPanel";
+import EndCardBuilder from "@/components/brand/EndCardBuilder";
 import {
   ASSET_KINDS,
   FONT_ROLES,
@@ -449,6 +451,31 @@ function BrandPage() {
             )}
           </div>
         </div>
+
+        {kit && (
+          <>
+            <div className="mt-16">
+              <h2 className="display-tight text-2xl">Type systems</h2>
+              <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
+                Lock how each role of text behaves — size, tracking, case, animation and where it
+                tends to sit. Templates then type your brand instead of guessing.
+              </p>
+              <div className="mt-6">
+                <TypeSystemPanel brandId={kit.id} />
+              </div>
+            </div>
+
+            <div className="mt-16">
+              <h2 className="display-tight text-2xl">End cards</h2>
+              <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
+                Build approved closers once. Every generated template ends on one.
+              </p>
+              <div className="mt-6">
+                <EndCardBuilder brandId={kit.id} />
+              </div>
+            </div>
+          </>
+        )}
       </section>
     </main>
   );
