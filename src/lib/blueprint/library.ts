@@ -22,7 +22,7 @@ export interface BlueprintBlock {
   kind: BlockKind;
   /** relative weight of the total duration */
   share: number;
-  note?: string;
+  note?: string | undefined;
 }
 
 export interface MotionSlot {
@@ -35,7 +35,7 @@ export interface MotionSlot {
   optional: boolean;
   styleTags: string[];
   /** normalized 0-1 position along the timeline, if known */
-  at?: number;
+  at?: number | undefined;
 }
 
 export interface Blueprint {
@@ -46,7 +46,7 @@ export interface Blueprint {
   blocks: BlueprintBlock[];
   bestFor: string[];
   /** semantic motion beats (opening accent, transition event, etc.) */
-  motionSlots?: MotionSlot[];
+  motionSlots?: MotionSlot[] | undefined;
 }
 
 const bp = (

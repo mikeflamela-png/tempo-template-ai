@@ -35,9 +35,9 @@ const EXITS: EndCard["exit"][] = ["fade", "slide_down", "none"];
 function Preview({ card, brandColors, logoUrl, productUrl, backgroundUrl }: {
   card: EndCard;
   brandColors: { bg: string; ink: string; accent: string };
-  logoUrl?: string;
-  productUrl?: string;
-  backgroundUrl?: string;
+  logoUrl?: string | undefined;
+  productUrl?: string | undefined;
+  backgroundUrl?: string | undefined;
 }) {
   const bg =
     card.background === "ink"
@@ -93,7 +93,8 @@ export default function EndCardBuilder({ brandId }: { brandId: string }) {
   useEndCards();
   useTypeSystems();
   const kit = brandById(brandId);
-  const cards = useMemo(() => endCardsForBrand(brandId), [brandId, useEndCards()]);
+  useEndCards();
+  const cards = useMemo(() => endCardsForBrand(brandId), [brandId]);
   const typeSystems = useMemo(() => typeSystemsForBrand(brandId), [brandId]);
   const [selectedId, setSelectedId] = useState<string | undefined>(cards[0]?.id);
   const selected = cards.find((c) => c.id === selectedId) ?? cards[0];

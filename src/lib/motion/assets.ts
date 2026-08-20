@@ -84,14 +84,14 @@ export interface MotionAsset {
   reverse: boolean;
   speed: number;
   quality: MotionAssetQuality;
-  brandId?: string;
+  brandId?: string | undefined;
   compatibleStyles: string[];
   usageRules: string[];
   kitKeys: string[];
   createdAt: number;
   stats: MotionAssetStats;
   /** session object URL, rebuilt from IndexedDB on load */
-  url?: string;
+  url?: string | undefined;
 }
 
 export type AssetKindResolved = "image" | "video" | "lottie" | "svg" | "audio";
@@ -298,11 +298,11 @@ export function recordAssetStat(id: string, key: AssetStatKey) {
 }
 
 export interface PickAssetsOptions {
-  categories?: MotionAssetCategory[];
-  styleTags?: string[];
-  brandId?: string;
-  bold?: boolean;
-  count?: number;
+  categories?: MotionAssetCategory[] | undefined;
+  styleTags?: string[] | undefined;
+  brandId?: string | undefined;
+  bold?: boolean | undefined;
+  count?: number | undefined;
   rng?: () => number;
 }
 

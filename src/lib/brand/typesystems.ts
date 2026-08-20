@@ -29,7 +29,7 @@ export interface TypeSystem {
   brandId: string;
   name: string;
   role: TypeSystemRole;
-  fontId?: string;
+  fontId?: string | undefined;
   fontWeight: number;
   sizeScale: number;
   minSizeScale: number;
@@ -39,9 +39,9 @@ export interface TypeSystem {
   lineHeight: number;
   align: "left" | "center" | "right";
   maxWidthPct: number;
-  color?: string;
+  color?: string | undefined;
   stroke: number;
-  strokeColor?: string;
+  strokeColor?: string | undefined;
   background: TypeSystemBackground;
   animation: TextStyleName;
   position: "top" | "center" | "bottom";

@@ -67,7 +67,7 @@ export interface GoldStandard {
   likes: LikeTag[];
   signals: GoldSignals;
   createdAt: number;
-  url?: string;
+  url?: string | undefined;
 }
 
 const KEY = "tempo.taste.goldStandards.v1";
