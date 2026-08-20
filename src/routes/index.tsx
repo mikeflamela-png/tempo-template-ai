@@ -196,8 +196,7 @@ function Index() {
       if (activeBrand) {
         const systems = typeSystemsForBrand(activeBrand.id);
         if (systems.length) spec = applyTypeSystems(spec, systems);
-        const card = endCardsForBrand(activeBrand.id).find((c) => c.approved) ??
-          endCardsForBrand(activeBrand.id)[0];
+        const card = endCardsForBrand(activeBrand.id)[0];
         if (card) spec = appendEndCard(spec, card, activeBrand);
       }
       return spec;
@@ -207,8 +206,8 @@ function Index() {
     out = rankByTaste(out, (s, w) => {
       const shots = s.mediaSlots.length || 1;
       const avgShot = s.duration / shots;
-      const shotFit = 1 - Math.min(1, Math.abs(avgShot - w.shotLength) / 2);
-      const textFit = 1 - Math.min(1, Math.abs(s.textSlots.length / shots - w.textDensity));
+      const shotFit = 1 - Math.min(1, Math.abs(avgShot - (2.4 - w.pacing * 1.8)) / 2);
+      const textFit = 1 - Math.min(1, Math.abs(s.textSlots.length / shots - w.typographyDensity));
       const fxFit =
         1 - Math.min(1, Math.abs((s.creativeEvents ?? []).length / shots - w.effectDensity));
       return (shotFit + textFit + fxFit) / 3;
