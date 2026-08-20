@@ -296,6 +296,36 @@ export interface EditPlan {
   geometryRatio: number;
 }
 
+
+/** An imported motion asset (SVG/PNG/WebM/Lottie/GIF) placed on the timeline. */
+export type BlendMode =
+  | "normal"
+  | "screen"
+  | "multiply"
+  | "overlay"
+  | "lighten"
+  | "difference"
+  | "soft-light";
+
+export interface MotionAssetEvent {
+  id: string;
+  assetId: string;
+  /** which semantic motion slot filled this, when it came from a blueprint */
+  slotKey?: string;
+  label?: string;
+  start: number;
+  duration: number;
+  scale: number;
+  x: number;
+  y: number;
+  opacity: number;
+  rotation?: number;
+  blend?: BlendMode;
+  loop?: boolean;
+  reverse?: boolean;
+  speed?: number;
+}
+
 export interface TemplateSpec {
   id: string;
   name: string;
@@ -319,6 +349,16 @@ export interface TemplateSpec {
   /** id of the source template when this is a version / sync variant */
   parentId?: string;
   versionLabel?: string;
+  /** imported motion assets placed over the edit */
+  motionAssets?: MotionAssetEvent[];
+  /** end card used for the closing block */
+  endCardId?: string;
+  /** approved type systems the generator drew from */
+  typeSystemIds?: string[];
+  /** blueprint motion slot key -> chosen motion kit item / asset id */
+  motionSlotPlan?: Record<string, string>;
+  /** structural blueprint this spec was built on */
+  blueprintId?: string;
 }
 
 
