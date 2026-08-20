@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as BrandRouteImport } from './routes/brand'
 import { Route as LibraryRouteImport } from './routes/library'
 import { Route as EditorIdRouteImport } from './routes/editor.$id'
 import { Route as ApiPublicRenderRouteImport } from './routes/api/public/render'
@@ -18,6 +19,11 @@ import { Route as ApiPublicRenderStatusIdRouteImport } from './routes/api/public
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BrandRoute = BrandRouteImport.update({
+  id: '/brand',
+  path: '/brand',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LibraryRoute = LibraryRouteImport.update({
@@ -43,6 +49,7 @@ const ApiPublicRenderStatusIdRoute = ApiPublicRenderStatusIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/brand': typeof BrandRoute
   '/library': typeof LibraryRoute
   '/editor/$id': typeof EditorIdRoute
   '/api/public/render': typeof ApiPublicRenderRoute
@@ -50,6 +57,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/brand': typeof BrandRoute
   '/library': typeof LibraryRoute
   '/editor/$id': typeof EditorIdRoute
   '/api/public/render': typeof ApiPublicRenderRoute
@@ -58,6 +66,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/brand': typeof BrandRoute
   '/library': typeof LibraryRoute
   '/editor/$id': typeof EditorIdRoute
   '/api/public/render': typeof ApiPublicRenderRoute
@@ -67,6 +76,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/brand'
     | '/library'
     | '/editor/$id'
     | '/api/public/render'
@@ -74,6 +84,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/brand'
     | '/library'
     | '/editor/$id'
     | '/api/public/render'
@@ -81,6 +92,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/brand'
     | '/library'
     | '/editor/$id'
     | '/api/public/render'
@@ -89,6 +101,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  BrandRoute: typeof BrandRoute
   LibraryRoute: typeof LibraryRoute
   EditorIdRoute: typeof EditorIdRoute
   ApiPublicRenderRoute: typeof ApiPublicRenderRoute
@@ -102,6 +115,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/brand': {
+      id: '/brand'
+      path: '/brand'
+      fullPath: '/brand'
+      preLoaderRoute: typeof BrandRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/library': {
@@ -137,6 +157,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  BrandRoute: BrandRoute,
   LibraryRoute: LibraryRoute,
   EditorIdRoute: EditorIdRoute,
   ApiPublicRenderRoute: ApiPublicRenderRoute,
