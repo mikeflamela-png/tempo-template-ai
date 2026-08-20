@@ -1,18 +1,41 @@
 import { useSyncExternalStore } from "react";
-import type { TemplateSpec } from "./types";
+import type { AudioTrack, TemplateSpec } from "./types";
 import { BASE_TEMPLATES } from "./library";
 import type { PreviewReel } from "./reel";
 
 const KEY = "template-lab:v1";
+
+export interface ProjectRecord {
+  id: string;
+  templateId: string;
+  name: string;
+  updatedAt: number;
+  spec: TemplateSpec;
+  textOverrides: Record<string, string>;
+  /** media is object-URL backed and cannot survive a reload — names only */
+  mediaNames: Record<string, string>;
+}
 
 interface State {
   generated: TemplateSpec[];
   saved: string[];
   /** object-URL backed, session only */
   reel: PreviewReel | null;
+  reelShuffle: number;
+  audio: AudioTrack | null;
+  projects: ProjectRecord[];
 }
 
-let state: State = { generated: [], saved: [], reel: null };
+const empty: State = {
+  generated: [],
+  saved: [],
+  reel: null,
+  reelShuffle: 0,
+  audio: null,
+  projects: [],
+};
+
+let state: State = { ...empty };
 let hydrated = false;
 const listeners = new Set<() => void>();
 
@@ -23,7 +46,12 @@ function hydrate() {
     const raw = window.localStorage.getItem(KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as Partial<State>;
-      state = { ...state, generated: parsed.generated ?? [], saved: parsed.saved ?? [] };
+      state = {
+        ...state,
+        generated: parsed.generated ?? [],
+        saved: parsed.saved ?? [],
+        projects: parsed.projects ?? [],
+      };
     }
   } catch {
     /* ignore */
@@ -36,7 +64,11 @@ function commit(next: State) {
     try {
       window.localStorage.setItem(
         KEY,
-        JSON.stringify({ generated: state.generated, saved: state.saved }),
+        JSON.stringify({
+          generated: state.generated,
+          saved: state.saved,
+          projects: state.projects,
+        }),
       );
     } catch {
       /* ignore */
@@ -44,8 +76,6 @@ function commit(next: State) {
   }
   listeners.forEach((l) => l());
 }
-
-const emptySnapshot: State = { generated: [], saved: [], reel: null };
 
 export function useTemplateStore() {
   hydrate();
@@ -55,7 +85,7 @@ export function useTemplateStore() {
       return () => listeners.delete(l);
     },
     () => state,
-    () => emptySnapshot,
+    () => empty,
   );
 }
 
@@ -85,12 +115,50 @@ export function setReel(reel: PreviewReel | null) {
       /* ignore */
     }
   }
-  commit({ ...state, reel });
+  commit({ ...state, reel, reelShuffle: 0 });
+}
+
+export function reshuffleReel() {
+  hydrate();
+  commit({ ...state, reelShuffle: state.reelShuffle + 1 });
 }
 
 export function getReel() {
   hydrate();
   return state.reel;
+}
+
+export function setAudio(audio: AudioTrack | null) {
+  hydrate();
+  if (state.audio && state.audio.url !== audio?.url) {
+    try {
+      URL.revokeObjectURL(state.audio.url);
+    } catch {
+      /* ignore */
+    }
+  }
+  commit({ ...state, audio });
+}
+
+export function updateAudio(patch: Partial<AudioTrack>) {
+  hydrate();
+  if (!state.audio) return;
+  commit({ ...state, audio: { ...state.audio, ...patch } });
+}
+
+export function saveProject(record: Omit<ProjectRecord, "updatedAt">) {
+  hydrate();
+  const next: ProjectRecord = { ...record, updatedAt: Date.now() };
+  commit({
+    ...state,
+    projects: [next, ...state.projects.filter((p) => p.id !== record.id)].slice(0, 40),
+  });
+  return next;
+}
+
+export function deleteProject(id: string) {
+  hydrate();
+  commit({ ...state, projects: state.projects.filter((p) => p.id !== id) });
 }
 
 export function allTemplates(): TemplateSpec[] {

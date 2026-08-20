@@ -173,7 +173,24 @@ export interface TextSlot {
   position: "top" | "center" | "bottom";
   align?: "left" | "center" | "right";
   accent?: boolean;
+  /** inspector overrides — all optional, template defaults win when absent */
+  fontKey?: string;
+  fontWeight?: number;
+  sizeScale?: number;
+  lineHeight?: number;
+  tracking?: number;
+  x?: number;
+  y?: number;
+  rotation?: number;
+  color?: string;
+  stroke?: number;
+  strokeColor?: string;
+  shadow?: number;
+  background?: string;
+  opacity?: number;
+  animSpeed?: number;
 }
+
 
 export type OverlayType =
   | "flash"
@@ -268,20 +285,108 @@ export interface TemplateSpec {
   /** Google font key from the font library. */
   fontKey?: string;
   direction?: CreativeDirection;
+  graphicSlots?: GraphicSlot[];
+  /** id of the source template when this is a version / sync variant */
+  parentId?: string;
+  versionLabel?: string;
+}
+
+export type GraphicKind =
+  | "line"
+  | "circle"
+  | "rect"
+  | "arrow"
+  | "scribble"
+  | "star"
+  | "cross"
+  | "grid"
+  | "label"
+  | "badge"
+  | "border"
+  | "film_frame"
+  | "underline"
+  | "highlight_bar"
+  | "counter"
+  | "number"
+  | "timestamp"
+  | "sticker"
+  | "editorial_mark"
+  | "progress_bar"
+  | "ticker"
+  | "corner";
+
+export type GraphicAnimation =
+  | "pop"
+  | "draw"
+  | "slide"
+  | "fade"
+  | "spin"
+  | "pulse"
+  | "snap";
+
+export interface GraphicSlot {
+  id: string;
+  kind: GraphicKind;
+  label?: string;
+  text?: string;
+  start: number;
+  duration: number;
+  x: number;
+  y: number;
+  scale: number;
+  rotation: number;
+  color?: string;
+  opacity: number;
+  animation: GraphicAnimation;
 }
 
 export interface MediaAssignment {
   url: string;
   kind: "image" | "video";
   name: string;
+
   inPoint?: number;
   zoom?: number;
   offsetX?: number;
   offsetY?: number;
   muted?: boolean;
+  /** inspector controls */
+  rotation?: number;
+  speed?: number;
+  opacity?: number;
+  volume?: number;
+  fit?: "cover" | "contain";
+  flipX?: boolean;
+  flipY?: boolean;
 }
 
 export type MediaMap = Record<string, MediaAssignment>;
+
+/** Uploaded music + analysed structure. */
+export interface BeatEvent {
+  time: number;
+  kind: "minorBeat" | "strongBeat" | "downbeat" | "transient" | "energyShift" | "drop" | "phraseChange";
+  strength: number;
+}
+
+export interface BeatMap {
+  bpm: number;
+  confidence: number;
+  duration: number;
+  events: BeatEvent[];
+}
+
+export interface AudioTrack {
+  url: string;
+  name: string;
+  duration: number;
+  trimStart: number;
+  volume: number;
+  fadeIn: number;
+  fadeOut: number;
+  beatMap: BeatMap | null;
+}
+
 
 export function validateSpec(spec: TemplateSpec): string[] {
   const errors: string[] = [];

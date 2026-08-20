@@ -24,18 +24,23 @@ import {
   type GenerateOptions,
 } from "@/lib/template/generate";
 import { addGenerated, useTemplateStore } from "@/lib/template/store";
+import { STYLE_PACKS, applyStylePack, stylePackByKey } from "@/lib/template/stylepacks";
+import { syncSpecToTrack } from "@/lib/template/sync";
+import { Link } from "@tanstack/react-router";
 import type { TemplateSpec } from "@/lib/template/types";
 
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Template Lab — generate social video templates" },
+      { title: "Tempo — generate short-form video editing templates" },
       {
         name: "description",
         content:
           "Describe the video you want, generate animated short-form editing templates, then drop your own clips into the slots.",
       },
-      { property: "og:title", content: "Template Lab" },
+      { property: "og:title", content: "Tempo" },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
       {
         property: "og:description",
         content: "Generate animated short-form editing templates and swap in your own media.",
@@ -98,7 +103,9 @@ function Chips<T extends string | number>({
 }
 
 function Index() {
-  const { generated, saved } = useTemplateStore();
+  const { generated, saved, audio } = useTemplateStore();
+  const [packKey, setPackKey] = useState<string | null>(null);
+  const [musicFirst, setMusicFirst] = useState(false);
   const [prompt, setPrompt] = useState("");
   const [platform, setPlatform] = useState(PLATFORMS[0]!);
   const [duration, setDuration] = useState(10);
@@ -130,22 +137,29 @@ function Index() {
     risk,
   };
 
+  const finish = (specs: TemplateSpec[]) => {
+    const pack = stylePackByKey(packKey);
+    let out = pack ? specs.map((s) => applyStylePack(s, pack)) : specs;
+    if (musicFirst && audio?.beatMap) out = out.map((s) => syncSpecToTrack(s, audio, 0.7));
+    return out;
+  };
+
   const generate = () => {
     setBusy(true);
     setTimeout(() => {
-      addGenerated(generateTemplates({ ...opts, prompt: prompt || EXAMPLE }, 4));
+      addGenerated(finish(generateTemplates({ ...opts, prompt: prompt || EXAMPLE }, 4)));
       setBusy(false);
       document.getElementById("results")?.scrollIntoView({ behavior: "smooth" });
     }, 450);
   };
 
   const similar = (spec: TemplateSpec) => {
-    addGenerated(regenerateSimilar(spec, { ...opts, prompt: prompt || EXAMPLE }, 4));
+    addGenerated(finish(regenerateSimilar(spec, { ...opts, prompt: prompt || EXAMPLE }, 4)));
     document.getElementById("results")?.scrollIntoView({ behavior: "smooth" });
   };
 
   const remix = (spec: TemplateSpec) => {
-    addGenerated(remixTemplate(spec, { ...opts, prompt: prompt || EXAMPLE }, 4));
+    addGenerated(finish(remixTemplate(spec, { ...opts, prompt: prompt || EXAMPLE }, 4)));
     document.getElementById("results")?.scrollIntoView({ behavior: "smooth" });
   };
 
@@ -161,9 +175,17 @@ function Index() {
       <div className="glow-surface">
         <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-6">
           <span className="display-tight text-lg tracking-tight">
-            TEMPLATE<span className="text-primary">LAB</span>
+            TEM<span className="text-primary">PO</span>
           </span>
-          <PreviewReelControl compact />
+          <div className="flex items-center gap-4">
+            <Link
+              to="/library"
+              className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground hover:text-foreground"
+            >
+              Creative library
+            </Link>
+            <PreviewReelControl compact />
+          </div>
         </header>
 
         <section className="mx-auto max-w-3xl px-6 pb-16 pt-10 text-center">
@@ -233,6 +255,49 @@ function Index() {
                 </div>
               )}
             </div>
+
+            <div className="mt-5 space-y-2 border-t border-border pt-5">
+              <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
+                Style pack
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={() => setPackKey(null)}
+                  className={`rounded-full border px-3.5 py-1.5 text-sm transition-colors ${
+                    packKey === null
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-border text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  None
+                </button>
+                {STYLE_PACKS.map((p) => (
+                  <button
+                    key={p.key}
+                    onClick={() => setPackKey(p.key)}
+                    title={p.blurb}
+                    className={`rounded-full border px-3.5 py-1.5 text-sm transition-colors ${
+                      packKey === p.key
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : "border-border text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {p.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {audio?.beatMap && (
+              <label className="mt-4 flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+                <input
+                  type="checkbox"
+                  checked={musicFirst}
+                  onChange={(e) => setMusicFirst(e.target.checked)}
+                />
+                Build the edit around {audio.name} ({audio.beatMap.bpm} BPM)
+              </label>
+            )}
 
             <div className="mt-5">
               <PreviewReelControl />
