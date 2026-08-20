@@ -1,5 +1,6 @@
 import {
   AbsoluteFill,
+  Audio,
   Img,
   Sequence,
   Video,
@@ -11,6 +12,7 @@ import {
 } from "remotion";
 import type {
   Animation,
+  AudioTrack,
   MediaMap,
   MediaSlot,
   Overlay,
@@ -20,6 +22,8 @@ import type {
 import { LAYOUT_BOXES } from "@/lib/template/layouts";
 import { fontByKey } from "@/lib/template/fonts";
 import { placeholderFor } from "@/lib/template/placeholders";
+import { GraphicLayer } from "./GraphicLayer";
+
 
 /* ------------------------------------------------------------------ motion */
 
@@ -319,24 +323,29 @@ function MediaFill({
 }) {
   const asset = media[slot.id];
   const zoom = asset?.zoom ?? 1;
+  const flip = `${asset?.flipX ? "scaleX(-1) " : ""}${asset?.flipY ? "scaleY(-1) " : ""}`;
   const style: React.CSSProperties = {
     width: "100%",
     height: "100%",
-    objectFit: "cover",
-    transform: `scale(${zoom}) translate(${asset?.offsetX ?? 0}%, ${asset?.offsetY ?? 0}%)`,
+    objectFit: asset?.fit ?? "cover",
+    opacity: asset?.opacity ?? 1,
+    transform: `${flip}rotate(${asset?.rotation ?? 0}deg) scale(${zoom}) translate(${asset?.offsetX ?? 0}%, ${asset?.offsetY ?? 0}%)`,
   };
   if (asset?.kind === "video") {
+    const speed = asset.speed ?? 1;
     return (
       <Video
         src={asset.url}
         startFrom={Math.round((asset.inPoint ?? 0) * fps)}
         muted={asset.muted !== false}
-        playbackRate={frozen ? 0.02 : 1}
+        volume={asset.volume ?? 1}
+        playbackRate={frozen ? 0.02 : speed}
         style={style}
       />
     );
   }
   if (asset) return <Img src={asset.url} style={style} />;
+
   return (
     <>
       <Img src={placeholderFor(slot.purpose, index)} style={style} />
@@ -462,14 +471,16 @@ function SlotLayer({
 function TextLayer({ text, spec }: { text: TextSlot; spec: TemplateSpec }) {
   const frame = useCurrentFrame();
   const { fps, width } = useVideoConfig();
+  const speed = text.animSpeed ?? 1;
+  const aFrame = frame * speed;
   const total = text.duration * fps;
-  const p = Math.min(frame / Math.max(0.35 * fps, 1), 1);
+  const p = Math.min(aFrame / Math.max(0.35 * fps, 1), 1);
   const outP = Math.max(0, (frame - (total - 0.2 * fps)) / (0.2 * fps));
-  const s = spring({ frame, fps, config: { damping: 14, stiffness: 200 } });
-  const color = text.accent ? spec.palette.accent : spec.palette.ink;
+  const s = spring({ frame: aFrame, fps, config: { damping: 14, stiffness: 200 } });
+  const color = text.color ?? (text.accent ? spec.palette.accent : spec.palette.ink);
   const words = text.value.split(" ").filter(Boolean);
-  const font = fontByKey(spec.fontKey);
-  const k = (width / 1080) * font.display.scale;
+  const font = fontByKey(text.fontKey || spec.fontKey);
+  const k = (width / 1080) * font.display.scale * (text.sizeScale ?? 1);
 
   const wrap: React.CSSProperties = {
     position: "absolute",
@@ -483,18 +494,27 @@ function TextLayer({ text, spec }: { text: TextSlot; spec: TemplateSpec }) {
     textAlign: text.align ?? "center",
     top: text.position === "top" ? "12%" : text.position === "center" ? "38%" : undefined,
     bottom: text.position === "bottom" ? "12%" : undefined,
-    opacity: 1 - outP,
+    opacity: (1 - outP) * (text.opacity ?? 1),
+    transform: `translate(${text.x ?? 0}%, ${text.y ?? 0}%) rotate(${text.rotation ?? 0}deg)`,
   };
 
   const common: React.CSSProperties = {
     color,
     fontFamily: font.stack,
     margin: 0,
-    lineHeight: 0.92,
+    lineHeight: text.lineHeight ?? 0.92,
     textTransform: font.display.uppercase ? "uppercase" : "none",
-    letterSpacing: font.display.tracking,
+    letterSpacing: text.tracking != null ? `${text.tracking}em` : font.display.tracking,
+    ...(text.stroke
+      ? {
+          WebkitTextStroke: `${text.stroke}px ${text.strokeColor ?? "#000"}`,
+        }
+      : {}),
+    ...(text.shadow ? { textShadow: `0 ${text.shadow / 2}px ${text.shadow}px rgba(0,0,0,.6)` } : {}),
+    ...(text.background ? { background: text.background } : {}),
   };
-  const heavy = font.display.weight;
+  const heavy = text.fontWeight ?? font.display.weight;
+
 
   let content: React.ReactNode = null;
   switch (text.style) {
@@ -1066,14 +1086,35 @@ export interface TemplateVideoProps {
   spec: TemplateSpec;
   media: MediaMap;
   textOverrides: Record<string, string>;
+  audio?: AudioTrack | null;
 }
 
-export const TemplateVideo: React.FC<TemplateVideoProps> = ({ spec, media, textOverrides }) => {
+export const TemplateVideo: React.FC<TemplateVideoProps> = ({
+  spec,
+  media,
+  textOverrides,
+  audio,
+}) => {
   const { fps } = useVideoConfig();
   const f = (sec: number) => Math.round(sec * fps);
+  const totalFrames = Math.max(2, f(spec.duration));
 
   return (
     <AbsoluteFill style={{ backgroundColor: spec.palette.bg }}>
+      {audio?.url && (
+        <Audio
+          src={audio.url}
+          startFrom={Math.round((audio.trimStart ?? 0) * fps)}
+          volume={(frame: number) => {
+            const fin = audio.fadeIn > 0 ? Math.min(1, frame / Math.max(1, f(audio.fadeIn))) : 1;
+            const fout =
+              audio.fadeOut > 0
+                ? Math.min(1, (totalFrames - frame) / Math.max(1, f(audio.fadeOut)))
+                : 1;
+            return Math.max(0, audio.volume * fin * fout);
+          }}
+        />
+      )}
       {spec.mediaSlots.map((slot, i) => (
         <Sequence
           key={slot.id}
@@ -1104,6 +1145,17 @@ export const TemplateVideo: React.FC<TemplateVideoProps> = ({ spec, media, textO
           <TextLayer text={{ ...text, value: textOverrides[text.id] ?? text.value }} spec={spec} />
         </Sequence>
       ))}
+      {(spec.graphicSlots ?? []).map((g) => (
+        <Sequence
+          key={g.id}
+          from={f(g.start)}
+          durationInFrames={Math.max(2, f(g.duration))}
+          layout="none"
+        >
+          <GraphicLayer graphic={g} palette={spec.palette} fontKey={spec.fontKey} />
+        </Sequence>
+      ))}
     </AbsoluteFill>
   );
+
 };

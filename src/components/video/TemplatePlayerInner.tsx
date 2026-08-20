@@ -1,12 +1,13 @@
 import { Player, type PlayerRef } from "@remotion/player";
 import { forwardRef } from "react";
 import { TemplateVideo } from "./TemplateComposition";
-import type { MediaMap, TemplateSpec } from "@/lib/template/types";
+import type { AudioTrack, MediaMap, TemplateSpec } from "@/lib/template/types";
 
 export interface PlayerProps {
   spec: TemplateSpec;
   media: MediaMap;
   textOverrides: Record<string, string>;
+  audio?: AudioTrack | null;
   controls?: boolean;
   autoPlay?: boolean;
   loop?: boolean;
@@ -19,6 +20,7 @@ const TemplatePlayerInner = forwardRef<PlayerRef, PlayerProps>(function Inner(
     spec,
     media,
     textOverrides,
+    audio = null,
     controls = true,
     autoPlay = false,
     loop = true,
@@ -31,7 +33,7 @@ const TemplatePlayerInner = forwardRef<PlayerRef, PlayerProps>(function Inner(
     <Player
       ref={ref}
       component={TemplateVideo}
-      inputProps={{ spec, media, textOverrides }}
+      inputProps={{ spec, media, textOverrides, audio }}
       durationInFrames={Math.max(2, Math.round(spec.duration * spec.fps))}
       fps={spec.fps}
       compositionWidth={spec.width}

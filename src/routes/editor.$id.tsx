@@ -1,33 +1,59 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute, Link, useParams } from "@tanstack/react-router";
 import type { PlayerRef } from "@remotion/player";
-import { ArrowLeft, Download, Film, ImageIcon, Trash2, Upload, Volume2, VolumeX } from "lucide-react";
+import {
+  ArrowLeft,
+  Film,
+  ImageIcon,
+  Save,
+  Shuffle,
+  Sparkles,
+  Trash2,
+  Upload,
+  Volume2,
+  VolumeX,
+  Wand2,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { TemplatePlayer } from "@/components/video/TemplatePlayer";
-import { findTemplate, useTemplateStore } from "@/lib/template/store";
+import { findTemplate, reshuffleReel, saveProject, useTemplateStore } from "@/lib/template/store";
 import { PreviewReelControl } from "@/components/PreviewReelControl";
 import { reelMediaFor } from "@/lib/template/reel";
+import { syncSpecToTrack } from "@/lib/template/sync";
 import { FONTS, FONT_CATEGORIES, fontByKey } from "@/lib/template/fonts";
-import type { MediaAssignment, MediaMap, TemplateSpec } from "@/lib/template/types";
+import { Timeline } from "@/components/editor/Timeline";
+import { SourceScrubber } from "@/components/editor/SourceScrubber";
+import { MusicPanel } from "@/components/editor/MusicPanel";
+import { GraphicsPanel } from "@/components/editor/GraphicsPanel";
+import { TextInspector } from "@/components/editor/TextInspector";
+import { ExportDialog } from "@/components/editor/ExportDialog";
+import type {
+  GraphicSlot,
+  MediaAssignment,
+  MediaMap,
+  TemplateSpec,
+  TextSlot,
+} from "@/lib/template/types";
 
 export const Route = createFileRoute("/editor/$id")({
   head: () => ({
     meta: [
-      { title: "Customize template — Template Lab" },
+      { title: "Edit — Tempo" },
       {
         name: "description",
         content:
-          "Drop your clips into the template's media slots, edit the text moments, and preview the edit instantly.",
+          "Stringout-first editing: drop one reel in, drag each shot window through the source, sync to music, add graphics and export.",
       },
-      { property: "og:title", content: "Customize template — Template Lab" },
+      { property: "og:title", content: "Edit — Tempo" },
       {
         property: "og:description",
-        content: "Replace placeholder media while the template's edit stays intact.",
+        content: "Swap media, retime to the beat and control every text and graphic layer.",
       },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
     ],
   }),
   component: EditorPage,
@@ -40,21 +66,43 @@ interface LibraryItem {
   name: string;
 }
 
+type Selection = { kind: "media" | "text" | "graphic"; id: string } | null;
+
 function EditorPage() {
   const { id } = useParams({ from: "/editor/$id" });
-  const found = useMemo<TemplateSpec | undefined>(() => findTemplate(id), [id]);
-  const { reel } = useTemplateStore();
+  const base = useMemo<TemplateSpec | undefined>(() => findTemplate(id), [id]);
+  const { reel, reelShuffle, audio } = useTemplateStore();
+
   const [fontKey, setFontKey] = useState<string | null>(null);
-  const spec = useMemo<TemplateSpec | undefined>(
-    () => (found ? (fontKey ? { ...found, fontKey } : found) : undefined),
-    [found, fontKey],
-  );
+  const [edits, setEdits] = useState<Partial<TemplateSpec>>({});
+  const [texts, setTexts] = useState<Record<string, string>>({});
   const [library, setLibrary] = useState<LibraryItem[]>([]);
   const [media, setMedia] = useState<MediaMap>({});
-  const [texts, setTexts] = useState<Record<string, string>>({});
-  const [activeSlot, setActiveSlot] = useState<string | null>(null);
+  const [selection, setSelection] = useState<Selection>(null);
+  const [tightness, setTightness] = useState(0.5);
+  const [syncedSpec, setSyncedSpec] = useState<TemplateSpec | null>(null);
+  const [playhead, setPlayhead] = useState(0);
+
   const playerRef = useRef<PlayerRef>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  const spec = useMemo<TemplateSpec | undefined>(() => {
+    if (!base) return undefined;
+    const merged: TemplateSpec = {
+      ...base,
+      ...edits,
+      ...(fontKey ? { fontKey } : {}),
+    };
+    return syncedSpec ? { ...syncedSpec, ...(fontKey ? { fontKey } : {}) } : merged;
+  }, [base, edits, fontKey, syncedSpec]);
+
+  useEffect(() => {
+    const p = playerRef.current;
+    if (!p || !spec) return;
+    const onFrame = () => setPlayhead((p.getCurrentFrame?.() ?? 0) / spec.fps);
+    const t = window.setInterval(onFrame, 250);
+    return () => window.clearInterval(t);
+  }, [spec]);
 
   const addFiles = useCallback((files: FileList | null) => {
     if (!files) return;
@@ -66,25 +114,39 @@ function EditorPage() {
         kind: f.type.startsWith("video/") ? "video" : "image",
         name: f.name,
       }));
-    if (items.length === 0) return;
-    setLibrary((prev) => [...prev, ...items]);
+    if (items.length) setLibrary((prev) => [...prev, ...items]);
   }, []);
 
   const previewMedia: MediaMap = useMemo(
-    () => (spec ? { ...reelMediaFor(spec, reel), ...media } : media),
-    [spec, reel, media],
+    () => (spec ? { ...reelMediaFor(spec, reel, reelShuffle), ...media } : media),
+    [spec, reel, reelShuffle, media],
   );
 
-  if (!spec) {
+  if (!spec || !base) {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center gap-4">
-        <p className="text-muted-foreground">That template isn't in this browser's library.</p>
+        <p className="text-muted-foreground">That template isn&apos;t in this browser&apos;s library.</p>
         <Button asChild>
-          <Link to="/">Back to Template Lab</Link>
+          <Link to="/">Back to Tempo</Link>
         </Button>
       </main>
     );
   }
+
+  const graphics = spec.graphicSlots ?? [];
+
+  const patchSpec = (patch: Partial<TemplateSpec>) => {
+    if (syncedSpec) setSyncedSpec({ ...syncedSpec, ...patch });
+    else setEdits((prev) => ({ ...prev, ...patch }));
+  };
+
+  const patchText = (slotId: string, patch: Partial<TextSlot>) =>
+    patchSpec({
+      textSlots: spec.textSlots.map((t) => (t.id === slotId ? { ...t, ...patch } : t)),
+    });
+
+  const patchGraphic = (gid: string, patch: Partial<GraphicSlot>) =>
+    patchSpec({ graphicSlots: graphics.map((g) => (g.id === gid ? { ...g, ...patch } : g)) });
 
   const assign = (slotId: string, item: LibraryItem) => {
     setMedia((prev) => ({
@@ -98,14 +160,18 @@ function EditorPage() {
         offsetX: 0,
         offsetY: 0,
         muted: true,
+        speed: 1,
+        opacity: 1,
+        rotation: 0,
+        fit: "cover",
       },
     }));
-    setActiveSlot(slotId);
+    setSelection({ kind: "media", id: slotId });
   };
 
   const update = (slotId: string, patch: Partial<MediaAssignment>) =>
     setMedia((prev) => {
-      const cur = prev[slotId];
+      const cur = prev[slotId] ?? previewMedia[slotId];
       if (!cur) return prev;
       return { ...prev, [slotId]: { ...cur, ...patch } };
     });
@@ -117,34 +183,30 @@ function EditorPage() {
       return next;
     });
 
-  const exportProject = () => {
-    const payload = {
-      spec,
-      textOverrides: texts,
-      slots: Object.fromEntries(
-        Object.entries(media).map(([k, v]) => [
-          k,
-          { name: v.name, kind: v.kind, inPoint: v.inPoint, zoom: v.zoom, muted: v.muted },
-        ]),
-      ),
-      output: { width: spec.width, height: spec.height, codec: "h264", container: "mp4" },
-    };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = `${spec.name.toLowerCase().replace(/\s+/g, "-")}-render.json`;
-    a.click();
-    toast("Render job exported", {
-      description:
-        "1080×1920 H.264 rendering runs on a Remotion render worker — not yet connected in this MVP build.",
-    });
+  const autoFill = () => {
+    if (!reel) {
+      toast.error("Upload a preview reel first");
+      return;
+    }
+    setMedia({});
+    toast.success("Every shot filled from the reel");
   };
 
-  const filled = Object.keys(media).length;
+  const doSync = () => {
+    if (!audio) return;
+    setSyncedSpec(syncSpecToTrack({ ...base, ...edits }, audio, tightness));
+    toast.success(tightness < 0.5 ? "Loosely retimed to the track" : "Snapped to the beat grid");
+  };
+
+  const selected = selection;
+  const selectedSlot = selected?.kind === "media" ? spec.mediaSlots.find((s) => s.id === selected.id) : undefined;
+  const selectedAsset = selectedSlot ? previewMedia[selectedSlot.id] : undefined;
+  const selectedText = selected?.kind === "text" ? spec.textSlots.find((t) => t.id === selected.id) : undefined;
+  const filled = Object.keys(previewMedia).length;
 
   return (
-    <main className="flex min-h-screen flex-col">
-      <header className="flex items-center justify-between border-b border-border px-5 py-3">
+    <main className="flex h-screen flex-col overflow-hidden">
+      <header className="flex shrink-0 items-center justify-between border-b border-border px-5 py-3">
         <div className="flex items-center gap-4">
           <Button asChild variant="ghost" size="sm">
             <Link to="/">
@@ -154,95 +216,152 @@ function EditorPage() {
           <div>
             <p className="display-tight text-base">{spec.name}</p>
             <p className="text-[11px] uppercase tracking-widest text-muted-foreground">
-              {spec.duration}s · {spec.mediaSlots.length} slots · {filled} filled
+              {spec.duration.toFixed(1)}s · {spec.mediaSlots.length} shots · {filled} filled
+              {syncedSpec ? " · beat-synced" : ""}
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           <PreviewReelControl compact />
-          <Button onClick={exportProject} className="font-semibold">
-            <Download className="size-4" /> Export MP4
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() =>
+              saveProject({
+                id: `${spec.id}-project`,
+                templateId: spec.id,
+                name: spec.name,
+                spec,
+                textOverrides: texts,
+                mediaNames: Object.fromEntries(
+                  Object.entries(media).map(([k, v]) => [k, v.name]),
+                ),
+              }) && toast.success("Project saved")
+            }
+          >
+            <Save className="size-4" /> Save
           </Button>
+          <ExportDialog spec={spec} media={previewMedia} textOverrides={texts} audio={audio} />
         </div>
       </header>
 
-      <div className="grid flex-1 gap-0 lg:grid-cols-[260px_1fr_340px]">
-        {/* Your media */}
-        <aside className="border-r border-border p-4">
-          <h2 className="mb-3 text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
-            Your media
-          </h2>
-          <div
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={(e) => {
-              e.preventDefault();
-              addFiles(e.dataTransfer.files);
-            }}
-            onClick={() => fileRef.current?.click()}
-            className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border px-4 py-8 text-center text-xs text-muted-foreground transition-colors hover:border-primary/60 hover:text-foreground"
-          >
-            <Upload className="size-5" />
-            Drop clips or images
+      <div className="grid min-h-0 flex-1 lg:grid-cols-[270px_1fr_340px]">
+        {/* media panel */}
+        <aside className="min-h-0 space-y-5 overflow-y-auto border-r border-border p-4">
+          <div>
+            <h2 className="mb-2 text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
+              Stringout
+            </h2>
+            <div className="flex gap-1.5">
+              <Button size="sm" variant="secondary" className="flex-1" onClick={autoFill}>
+                <Wand2 className="size-3.5" /> Auto-fill
+              </Button>
+              <Button size="sm" variant="secondary" className="flex-1" onClick={() => reshuffleReel()}>
+                <Shuffle className="size-3.5" /> Reshuffle
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setMedia({})}>
+                Clear
+              </Button>
+            </div>
           </div>
-          <input
-            ref={fileRef}
-            type="file"
-            accept="image/*,video/*"
-            multiple
-            hidden
-            onChange={(e) => addFiles(e.target.files)}
+
+          <div>
+            <h2 className="mb-2 text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
+              Your media
+            </h2>
+            <div
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => {
+                e.preventDefault();
+                addFiles(e.dataTransfer.files);
+              }}
+              onClick={() => fileRef.current?.click()}
+              className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border px-4 py-7 text-center text-xs text-muted-foreground hover:border-primary/60 hover:text-foreground"
+            >
+              <Upload className="size-5" />
+              Drop clips, images or logos
+            </div>
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*,video/*"
+              multiple
+              hidden
+              onChange={(e) => addFiles(e.target.files)}
+            />
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              {library.map((item) => (
+                <button
+                  key={item.id}
+                  draggable
+                  onDragStart={(e) => e.dataTransfer.setData("text/plain", item.id)}
+                  onClick={() => selectedSlot && assign(selectedSlot.id, item)}
+                  title={selectedSlot ? "Click to place in selected shot" : "Select a shot first"}
+                  className="group relative aspect-[9/16] overflow-hidden rounded-lg border border-border"
+                >
+                  {item.kind === "image" ? (
+                    <img src={item.url} alt={item.name} className="size-full object-cover" />
+                  ) : (
+                    <video src={item.url} muted className="size-full object-cover" />
+                  )}
+                  <span className="absolute bottom-1 left-1 rounded bg-background/80 px-1 text-[9px]">
+                    {item.kind === "video" ? (
+                      <Film className="size-3" />
+                    ) : (
+                      <ImageIcon className="size-3" />
+                    )}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <MusicPanel
+            audio={audio}
+            tightness={tightness}
+            onTightness={setTightness}
+            onSync={doSync}
+            onUnsync={() => setSyncedSpec(null)}
+            synced={Boolean(syncedSpec)}
           />
-          <div className="mt-4 grid grid-cols-2 gap-2">
-            {library.map((item) => (
-              <button
-                key={item.id}
-                draggable
-                onDragStart={(e) => e.dataTransfer.setData("text/plain", item.id)}
-                onClick={() => activeSlot && assign(activeSlot, item)}
-                title={activeSlot ? "Click to place in selected slot" : "Select a slot first"}
-                className="group relative aspect-[9/16] overflow-hidden rounded-lg border border-border"
-              >
-                {item.kind === "image" ? (
-                  <img src={item.url} alt={item.name} className="size-full object-cover" />
-                ) : (
-                  <video src={item.url} muted className="size-full object-cover" />
-                )}
-                <span className="absolute bottom-1 left-1 rounded bg-background/80 px-1 text-[9px]">
-                  {item.kind === "video" ? <Film className="size-3" /> : <ImageIcon className="size-3" />}
-                </span>
-              </button>
-            ))}
-          </div>
         </aside>
 
-        {/* Preview */}
-        <section className="flex min-w-0 flex-col items-center justify-center gap-4 bg-black/40 p-6">
-          <div
-            className="max-h-[70vh] max-w-full overflow-hidden rounded-2xl border border-border bg-black"
-            style={{ aspectRatio: `${spec.width} / ${spec.height}`, height: "70vh" }}
-          >
-            <TemplatePlayer
-              ref={playerRef}
-              spec={spec}
-              media={previewMedia}
-              textOverrides={texts}
-              controls
-              loop
-            />
+        {/* preview + timeline */}
+        <section className="flex min-h-0 min-w-0 flex-col">
+          <div className="flex min-h-0 flex-1 items-center justify-center bg-black/40 p-4">
+            <div
+              className="max-h-full overflow-hidden rounded-2xl border border-border bg-black"
+              style={{ aspectRatio: `${spec.width} / ${spec.height}`, height: "100%" }}
+            >
+              <TemplatePlayer
+                ref={playerRef}
+                spec={spec}
+                media={previewMedia}
+                textOverrides={texts}
+                audio={audio}
+                controls
+                loop
+              />
+            </div>
           </div>
-          <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
-            {spec.creativeProfile.family} · {spec.creativeProfile.structure}
-          </p>
+          <Timeline
+            spec={spec}
+            playerRef={playerRef}
+            audio={audio}
+            selected={selection?.id ?? null}
+            onSelect={(kind, sid) => setSelection({ kind, id: sid })}
+            thumbs={{}}
+          />
         </section>
 
-        {/* Slots + text */}
-        <aside className="max-h-[calc(100vh-57px)] space-y-6 overflow-y-auto border-l border-border p-4">
+        {/* inspector */}
+        <aside className="min-h-0 space-y-6 overflow-y-auto border-l border-border p-4">
           <div>
-            <h2 className="mb-3 text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
+            <h2 className="mb-2 text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
               Typography
             </h2>
             <select
-              value={fontKey ?? found?.fontKey ?? FONTS[0]!.key}
+              value={fontKey ?? base.fontKey ?? FONTS[0]!.key}
               onChange={(e) => setFontKey(e.target.value)}
               className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
             >
@@ -256,31 +375,35 @@ function EditorPage() {
                 </optgroup>
               ))}
             </select>
-            <p className="mt-2 text-[11px] text-muted-foreground">
-              {fontByKey(spec.fontKey).category} · changes every text moment in the template
+            <p className="mt-1.5 text-[11px] text-muted-foreground">
+              {fontByKey(spec.fontKey).category} · every text moment unless overridden
             </p>
           </div>
 
           <div>
-            <h2 className="mb-3 text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
-              Replace media
+            <h2 className="mb-2 text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
+              Shots
             </h2>
             <div className="space-y-2">
               {spec.mediaSlots.map((slot, i) => {
-                const asset = media[slot.id];
-                const isActive = activeSlot === slot.id;
+                const asset = previewMedia[slot.id];
+                const isActive = selection?.kind === "media" && selection.id === slot.id;
                 return (
                   <div
                     key={slot.id}
                     onDragOver={(e) => e.preventDefault()}
                     onDrop={(e) => {
                       e.preventDefault();
-                      const item = library.find((l) => l.id === e.dataTransfer.getData("text/plain"));
+                      const item = library.find(
+                        (l) => l.id === e.dataTransfer.getData("text/plain"),
+                      );
                       if (item) assign(slot.id, item);
                     }}
-                    onClick={() => setActiveSlot(slot.id)}
+                    onClick={() => setSelection({ kind: "media", id: slot.id })}
                     className={`cursor-pointer rounded-xl border p-3 transition-colors ${
-                      isActive ? "border-primary bg-primary/5" : "border-border hover:border-foreground/30"
+                      isActive
+                        ? "border-primary bg-primary/5"
+                        : "border-border hover:border-foreground/30"
                     }`}
                   >
                     <div className="flex items-center gap-3">
@@ -293,7 +416,7 @@ function EditorPage() {
                           )
                         ) : (
                           <span className="flex size-full items-center justify-center text-[9px] text-muted-foreground">
-                            {reel ? "reel" : "drop"}
+                            drop
                           </span>
                         )}
                       </div>
@@ -305,7 +428,7 @@ function EditorPage() {
                           {slot.duration.toFixed(2)}s · {slot.layout} · {slot.animationIn}
                         </p>
                       </div>
-                      {asset && (
+                      {media[slot.id] && (
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
@@ -322,12 +445,13 @@ function EditorPage() {
                     {isActive && asset && (
                       <div className="mt-3 space-y-3 border-t border-border pt-3">
                         {asset.kind === "video" && (
-                          <Adjust
-                            label={`In point ${(asset.inPoint ?? 0).toFixed(1)}s`}
-                            value={asset.inPoint ?? 0}
-                            min={0}
-                            max={20}
-                            step={0.1}
+                          <SourceScrubber
+                            url={asset.url}
+                            sourceDuration={
+                              reel && asset.url === reel.url ? reel.duration : slot.duration * 4
+                            }
+                            window={slot.duration}
+                            inPoint={asset.inPoint ?? 0}
                             onChange={(v) => update(slot.id, { inPoint: v })}
                           />
                         )}
@@ -355,24 +479,72 @@ function EditorPage() {
                           step={1}
                           onChange={(v) => update(slot.id, { offsetY: v })}
                         />
+                        <Adjust
+                          label={`Rotation ${asset.rotation ?? 0}°`}
+                          value={asset.rotation ?? 0}
+                          min={-30}
+                          max={30}
+                          step={1}
+                          onChange={(v) => update(slot.id, { rotation: v })}
+                        />
+                        <Adjust
+                          label={`Opacity ${Math.round((asset.opacity ?? 1) * 100)}%`}
+                          value={asset.opacity ?? 1}
+                          min={0}
+                          max={1}
+                          step={0.05}
+                          onChange={(v) => update(slot.id, { opacity: v })}
+                        />
                         {asset.kind === "video" && (
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            className="w-full"
-                            onClick={() => update(slot.id, { muted: !(asset.muted !== false) })}
-                          >
-                            {asset.muted !== false ? (
-                              <>
-                                <VolumeX className="size-4" /> Muted
-                              </>
-                            ) : (
-                              <>
-                                <Volume2 className="size-4" /> Audio on
-                              </>
-                            )}
-                          </Button>
+                          <>
+                            <Adjust
+                              label={`Speed ${(asset.speed ?? 1).toFixed(2)}×`}
+                              value={asset.speed ?? 1}
+                              min={0.25}
+                              max={3}
+                              step={0.05}
+                              onChange={(v) => update(slot.id, { speed: v })}
+                            />
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              className="w-full"
+                              onClick={() => update(slot.id, { muted: !(asset.muted !== false) })}
+                            >
+                              {asset.muted !== false ? (
+                                <>
+                                  <VolumeX className="size-4" /> Muted
+                                </>
+                              ) : (
+                                <>
+                                  <Volume2 className="size-4" /> Audio on
+                                </>
+                              )}
+                            </Button>
+                          </>
                         )}
+                        <div className="flex gap-1.5">
+                          <Button
+                            size="sm"
+                            variant={asset.fit === "contain" ? "default" : "secondary"}
+                            className="flex-1"
+                            onClick={() =>
+                              update(slot.id, {
+                                fit: asset.fit === "contain" ? "cover" : "contain",
+                              })
+                            }
+                          >
+                            {asset.fit === "contain" ? "Contain" : "Cover"}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant={asset.flipX ? "default" : "secondary"}
+                            className="flex-1"
+                            onClick={() => update(slot.id, { flipX: !asset.flipX })}
+                          >
+                            Flip
+                          </Button>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -381,26 +553,61 @@ function EditorPage() {
             </div>
           </div>
 
-          {spec.textSlots.length > 0 && (
+          {selectedText && (
             <div>
-              <h2 className="mb-3 text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
-                Text
+              <h2 className="mb-2 text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
+                Text inspector
               </h2>
-              <div className="space-y-3">
+              <TextInspector
+                slot={selectedText}
+                duration={spec.duration}
+                value={texts[selectedText.id] ?? selectedText.value}
+                onValue={(v) => setTexts((prev) => ({ ...prev, [selectedText.id]: v }))}
+                onUpdate={(patch) => patchText(selectedText.id, patch)}
+              />
+            </div>
+          )}
+
+          {!selectedText && spec.textSlots.length > 0 && (
+            <div>
+              <h2 className="mb-2 text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
+                Text moments
+              </h2>
+              <div className="space-y-1">
                 {spec.textSlots.map((t) => (
-                  <div key={t.id} className="space-y-1.5">
-                    <Label className="text-[11px] uppercase tracking-widest text-muted-foreground">
-                      {t.label} · {t.start.toFixed(1)}s
-                    </Label>
-                    <Input
-                      value={texts[t.id] ?? t.value}
-                      onChange={(e) => setTexts((prev) => ({ ...prev, [t.id]: e.target.value }))}
-                    />
-                  </div>
+                  <button
+                    key={t.id}
+                    onClick={() => setSelection({ kind: "text", id: t.id })}
+                    className="flex w-full items-center justify-between rounded-md border border-border px-2 py-1.5 text-left text-[11px] hover:border-primary"
+                  >
+                    <span className="truncate">{texts[t.id] ?? t.value}</span>
+                    <span className="ml-2 shrink-0 tabular-nums text-muted-foreground">
+                      {t.start.toFixed(1)}s
+                    </span>
+                  </button>
                 ))}
               </div>
             </div>
           )}
+
+          <GraphicsPanel
+            graphics={graphics}
+            duration={spec.duration}
+            selected={selection?.kind === "graphic" ? selection.id : null}
+            onSelect={(gid) => setSelection({ kind: "graphic", id: gid })}
+            onAdd={(g) => {
+              patchSpec({ graphicSlots: [...graphics, g] });
+              setSelection({ kind: "graphic", id: g.id });
+            }}
+            onUpdate={patchGraphic}
+            onRemove={(gid) => patchSpec({ graphicSlots: graphics.filter((g) => g.id !== gid) })}
+            playhead={Math.min(playhead, Math.max(0, spec.duration - 1))}
+          />
+
+          <p className="flex items-start gap-2 rounded-lg border border-border p-2 text-[11px] text-muted-foreground">
+            <Sparkles className="mt-0.5 size-3.5 shrink-0" />
+            {spec.creativeProfile.family} · {spec.creativeProfile.structure}
+          </p>
         </aside>
       </div>
     </main>
@@ -430,7 +637,7 @@ function Adjust({
         min={min}
         max={max}
         step={step}
-        onValueChange={(v) => onChange(v[0] ?? value)}
+        onValueChange={(v) => onChange(Number((v[0] ?? value).toFixed(2)))}
       />
     </div>
   );
