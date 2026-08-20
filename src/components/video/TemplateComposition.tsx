@@ -1180,7 +1180,14 @@ export const TemplateVideo: React.FC<TemplateVideoProps> = ({
             <CreativeEventLayer event={ev} spec={spec} media={media} />
           </Sequence>
         ))}
+      <MotionAssetLayer
+        events={spec.motionAssets ?? []}
+        width={spec.width}
+        height={spec.height}
+        fps={spec.fps}
+      />
     </AbsoluteFill>
+
   );
 
 };
