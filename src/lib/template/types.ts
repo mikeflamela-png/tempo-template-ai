@@ -268,6 +268,34 @@ export interface Palette {
   accent: string;
 }
 
+/** An executable creative moment layered over the footage. */
+export interface CreativeEvent {
+  id: string;
+  /** kernel id from the capability layer */
+  kernel: string;
+  /** technique id it was instantiated from, when it came from the library */
+  techniqueId?: string;
+  label?: string;
+  start: number;
+  duration: number;
+  params: Record<string, number | string>;
+  /** below text/graphics or above everything */
+  layer?: "under_text" | "over_all";
+  word?: string;
+  seed?: number;
+  opacity?: number;
+}
+
+/** The 4-stage pipeline's plan for a template, kept for DNA + critique. */
+export interface EditPlan {
+  intent: string;
+  beats: { at: number; move: string }[];
+  techniques: string[];
+  criticNotes: string[];
+  criticScore: number;
+  geometryRatio: number;
+}
+
 export interface TemplateSpec {
   id: string;
   name: string;
@@ -286,10 +314,13 @@ export interface TemplateSpec {
   fontKey?: string;
   direction?: CreativeDirection;
   graphicSlots?: GraphicSlot[];
+  creativeEvents?: CreativeEvent[];
+  editPlan?: EditPlan;
   /** id of the source template when this is a version / sync variant */
   parentId?: string;
   versionLabel?: string;
 }
+
 
 export type GraphicKind =
   | "line"

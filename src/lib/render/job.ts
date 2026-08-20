@@ -1,13 +1,26 @@
 import type { MediaMap, TemplateSpec } from "@/lib/template/types";
 
-export type RenderStage = "idle" | "preparing" | "uploading" | "rendering" | "done" | "error";
+export type RenderStage =
+  | "idle"
+  | "preparing"
+  | "uploading"
+  | "rendering"
+  | "done"
+  | "error";
 
 export interface RenderJobPayload {
   spec: TemplateSpec;
   textOverrides: Record<string, string>;
   media: Record<string, { name: string; kind: string; inPoint?: number; zoom?: number }>;
   audio: { name: string; trimStart: number; volume: number } | null;
-  output: { width: number; height: number; fps: number; codec: "h264"; container: "mp4" };
+  output: {
+    width: number;
+    height: number;
+    fps: number;
+    codec: "h264";
+    container: "mp4";
+    crf?: number;
+  };
 }
 
 export interface RenderStatus {

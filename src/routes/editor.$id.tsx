@@ -30,6 +30,7 @@ import { MusicPanel } from "@/components/editor/MusicPanel";
 import { GraphicsPanel } from "@/components/editor/GraphicsPanel";
 import { TextInspector } from "@/components/editor/TextInspector";
 import { ExportDialog } from "@/components/editor/ExportDialog";
+import { MomentEditor } from "@/components/editor/MomentEditor";
 import type {
   GraphicSlot,
   MediaAssignment,
@@ -356,6 +357,15 @@ function EditorPage() {
 
         {/* inspector */}
         <aside className="min-h-0 space-y-6 overflow-y-auto border-l border-border p-4">
+          <MomentEditor
+            spec={spec}
+            media={previewMedia}
+            playhead={playhead}
+            onChange={(creativeEvents) => {
+              setSyncedSpec((prev) => (prev ? { ...prev, creativeEvents } : prev));
+              setEdits((prev) => ({ ...prev, creativeEvents }));
+            }}
+          />
           <div>
             <h2 className="mb-2 text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
               Typography
