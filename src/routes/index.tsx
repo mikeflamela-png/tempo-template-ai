@@ -33,6 +33,8 @@ import { appendEndCard, endCardsForBrand } from "@/lib/brand/endcards";
 import { rankByTaste } from "@/lib/taste/profile";
 import { regenerateGuard } from "@/lib/template/qa";
 import { MOTION_PACKS, packByKey, applyMotionPack } from "@/lib/motion/packs";
+import { composeMotion } from "@/lib/motion/compose";
+import { CREATIVE_SOURCES, type CreativeSource } from "@/lib/motion/assets";
 import { allBlueprints, blueprintById, applyBlueprint, useBlueprints } from "@/lib/blueprint/library";
 import { Link } from "@tanstack/react-router";
 import type { TemplateSpec } from "@/lib/template/types";
