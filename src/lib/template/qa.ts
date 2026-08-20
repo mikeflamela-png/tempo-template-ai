@@ -30,6 +30,7 @@ export interface QAContext {
   copy?: CopyKit | null | undefined;
   media?: MediaMap | undefined;
   platform?: Platform | undefined;
+  styleKey?: string | null | undefined;
 }
 
 const STATUS_WEIGHT: Record<QAStatus, number> = { pass: 1, warn: 0.5, fail: 0 };
@@ -229,9 +230,44 @@ function checkAntiGeneric(spec: TemplateSpec): QACheck {
   return check("anti_generic", "Avoids generic split/rectangle overuse", "fail", `${Math.round(ratio * 100)}% of shots use split/rect layouts — feels templated.`);
 }
 
+import { styleProfileFor } from "@/lib/template/styleprofiles";
+
+/** The spec visibly represents its style: at least one preferred transition,
+ * overlay or asset-derived event, and none of the discouraged categories. */
+export function checkStyleRepresentation(spec: TemplateSpec, styleKey?: string | null): QACheck {
+  const profile = styleProfileFor(styleKey);
+  if (!profile) return check("style_representation", "Represents chosen style", "pass", "No style selected — skipped.");
+
+  const usesPreferredTransition = spec.mediaSlots.some(
+    (m) => m.transitionOut && profile.transitions.includes(m.transitionOut),
+  );
+  const usesPreferredOverlay = spec.overlays.some((o) => profile.overlays.includes(o.type));
+  const usesPreferredTextStyle = spec.textSlots.some((t) => profile.textStyles.includes(t.style));
+  const representsStyle = usesPreferredTransition || usesPreferredOverlay || usesPreferredTextStyle;
+
+  const discouragedOverlayHit = spec.overlays.find((o) => profile.discouragedOverlays.includes(o.type));
+
+  if (discouragedOverlayHit)
+    return check(
+      "style_representation",
+      "Represents chosen style",
+      "fail",
+      `Carries a "${discouragedOverlayHit.type}" overlay, which ${profile.key} discourages.`,
+    );
+  if (!representsStyle)
+    return check(
+      "style_representation",
+      "Represents chosen style",
+      "fail",
+      `No preferred transition, overlay or text style for ${profile.key} found.`,
+    );
+  return check("style_representation", "Represents chosen style", "pass", `${profile.key} signature present.`);
+}
+
 export function runTemplateQA(spec: TemplateSpec, ctx: QAContext = {}): QAResult {
-  const { brand, copy, media, platform } = ctx;
+  const { brand, copy, media, platform, styleKey } = ctx;
   const checks: QACheck[] = [
+    checkStyleRepresentation(spec, styleKey),
     checkCopyExact(spec, copy),
     checkFonts(spec, brand),
     checkAspectPreserved(spec, media),

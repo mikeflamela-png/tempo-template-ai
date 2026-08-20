@@ -1,6 +1,9 @@
+import { useEffect, useState } from "react";
 import {
   AbsoluteFill,
   Audio,
+  continueRender,
+  delayRender,
   Img,
   Sequence,
   Video,
@@ -20,7 +23,8 @@ import type {
   TextSlot,
 } from "@/lib/template/types";
 import { LAYOUT_BOXES } from "@/lib/template/layouts";
-import { fontByKey } from "@/lib/template/fonts";
+import { fontByKey, registerRuntimeFont } from "@/lib/template/fonts";
+import type { AssetUrlMap } from "@/lib/render/resolve";
 import { placeholderFor } from "@/lib/template/placeholders";
 import { CreativeEventLayer } from "./CreativeEventLayer";
 import { GraphicLayer } from "./GraphicLayer";
@@ -1085,11 +1089,34 @@ function OverlayLayer({ overlay, spec }: { overlay: Overlay; spec: TemplateSpec 
 
 /* --------------------------------------------------------------- composition */
 
+/** Blocks the first rendered frame until uploaded fonts are actually usable. */
+function useFontsReady(faces?: RenderFontFace[] | undefined) {
+  const [handle] = useState(() => ((faces ?? []).length > 0 ? delayRender("brand fonts") : null));
+  useEffect(() => {
+    if (handle === null) return;
+    const families = (faces ?? []).map((f) => `12px '${f.family}'`);
+    Promise.all(families.map((f) => document.fonts.load(f)))
+      .catch(() => undefined)
+      .finally(() => continueRender(handle));
+  }, [handle, faces]);
+}
+
+export interface RenderFontFace {
+  /** font key used by spec.fontKey / text.fontKey */
+  key: string;
+  family: string;
+  url: string;
+}
+
 export interface TemplateVideoProps {
   spec: TemplateSpec;
   media: MediaMap;
   textOverrides: Record<string, string>;
   audio?: AudioTrack | null;
+  /** server render: uploaded motion / brand asset files, keyed by asset id */
+  assetUrls?: AssetUrlMap | undefined;
+  /** server render: uploaded brand fonts, registered before the first frame */
+  fontFaces?: RenderFontFace[] | undefined;
 }
 
 export const TemplateVideo: React.FC<TemplateVideoProps> = ({
@@ -1097,13 +1124,38 @@ export const TemplateVideo: React.FC<TemplateVideoProps> = ({
   media,
   textOverrides,
   audio,
+  assetUrls,
+  fontFaces,
 }) => {
+  // Uploaded brand fonts have no Google entry — register them so fontByKey()
+  // resolves to the real family on the render machine too.
+  useFontsReady(fontFaces);
+  for (const f of fontFaces ?? []) {
+    registerRuntimeFont({
+      key: f.key,
+      name: f.family,
+      stack: `'${f.family}', system-ui, sans-serif`,
+      category: "Minimal",
+      google: "",
+      display: { weight: 600, tracking: 0, uppercase: false, scale: 1 },
+    });
+  }
   const { fps } = useVideoConfig();
   const f = (sec: number) => Math.round(sec * fps);
   const totalFrames = Math.max(2, f(spec.duration));
 
   return (
     <AbsoluteFill style={{ backgroundColor: spec.palette.bg }}>
+      {(fontFaces ?? []).length > 0 && (
+        <style>
+          {(fontFaces ?? [])
+            .map(
+              (f) =>
+                `@font-face{font-family:'${f.family}';src:url('${f.url}');font-display:block;}`,
+            )
+            .join("\n")}
+        </style>
+      )}
       {audio?.url && (
         <Audio
           src={audio.url}
@@ -1187,6 +1239,7 @@ export const TemplateVideo: React.FC<TemplateVideoProps> = ({
         width={spec.width}
         height={spec.height}
         fps={spec.fps}
+        assetUrls={assetUrls}
       />
     </AbsoluteFill>
 

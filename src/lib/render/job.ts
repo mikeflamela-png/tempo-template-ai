@@ -22,6 +22,10 @@ export type ExportQuality = "standard" | "high";
 
 export interface RenderJobPayload {
   spec: TemplateSpec;
+  /** uploaded motion / brand asset descriptors, keyed by asset id */
+  assetMeta?: Record<string, { kind: string; fileName: string; loop?: boolean; speed?: number }>;
+  /** uploaded brand fonts */
+  fonts?: { key: string; family: string; fileName: string }[];
   textOverrides: Record<string, string>;
   media: Record<string, { name: string; kind: string; inPoint?: number; zoom?: number }>;
   audio: { name: string; trimStart: number; volume: number } | null;

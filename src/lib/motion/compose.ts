@@ -12,6 +12,8 @@
  */
 import type { MotionAssetEvent, TemplateSpec } from "@/lib/template/types";
 import type { MotionPack } from "@/lib/motion/packs";
+import { packByKey } from "@/lib/motion/packs";
+import { styleProfileFor } from "@/lib/template/styleprofiles";
 import {
   motionAssetById,
   pickAssetsForSlot,
@@ -28,6 +30,8 @@ export interface ComposeOptions {
   pack?: MotionPack | null | undefined;
   brandId?: string | undefined;
   styleTags?: string[] | undefined;
+  /** style key from styleprofiles.ts — restricts assets to that style's kit/allowed categories */
+  styleKey?: string | undefined;
   rng?: () => number;
 }
 
@@ -136,13 +140,22 @@ export function composeMotion(spec: TemplateSpec, opts: ComposeOptions = {}): Co
   const {
     effectAmount = 5,
     source = "curated",
-    pack = null,
     brandId,
     styleTags = [],
+    styleKey,
     rng = Math.random,
   } = opts;
 
-  const budget = budgetFor(spec.duration, effectAmount);
+  const profile = styleProfileFor(styleKey);
+  // priority: an explicit pack wins, otherwise the style profile's
+  // recommended kit, so style controls actually steer which assets/kernels
+  // are eligible.
+  const pack = opts.pack ?? (profile ? packByKey(profile.recommendedPackKey) ?? null : null);
+  const effectiveAmount = profile ? effectAmount * profile.effectBudgetMultiplier : effectAmount;
+  const mergedStyleTags = profile ? [...new Set([...styleTags, ...profile.styleTags])] : styleTags;
+  const discouraged = new Set(profile?.discouragedAssetCategories ?? []);
+
+  const budget = budgetFor(spec.duration, effectiveAmount);
   if (budget === 0) {
     return {
       spec: { ...spec, motionAssets: [], creativeEvents: [] },
@@ -167,14 +180,14 @@ export function composeMotion(spec: TemplateSpec, opts: ComposeOptions = {}): Co
       roles: [m.role],
       ...(pack ? { kitKey: pack.key } : {}),
       ...(brandId ? { brandId } : {}),
-      ...(styleTags.length ? { styleTags } : {}),
+      ...(mergedStyleTags.length ? { styleTags: mergedStyleTags } : {}),
       source,
       usedCounts: used,
       section,
       count: 1,
       rng,
     });
-    if (!asset) continue;
+    if (!asset || discouraged.has(asset.category)) continue;
     used[asset.id] = (used[asset.id] ?? 0) + 1;
     events.push(eventFromAsset(asset, m.at, m.role, spec, rng));
   }

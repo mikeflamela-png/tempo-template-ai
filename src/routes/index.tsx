@@ -1,10 +1,11 @@
 import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Loader2, Sparkles } from "lucide-react";
+import { ChevronDown, Loader2, Sparkles, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { TemplateCard } from "@/components/TemplateCard";
 import { PreviewReelControl } from "@/components/PreviewReelControl";
+import { AppNav } from "@/components/AppNav";
 import { Slider } from "@/components/ui/slider";
 import { BASE_TEMPLATES } from "@/lib/template/library";
 import {
@@ -39,6 +40,13 @@ import { allBlueprints, blueprintById, applyBlueprint, useBlueprints } from "@/l
 import { Link } from "@tanstack/react-router";
 import type { TemplateSpec } from "@/lib/template/types";
 
+// Optional module: recommends a motion pack for a chosen style pack.
+// Imported defensively via import.meta.glob so a missing module never breaks the build.
+const styleProfileModules = import.meta.glob("/src/lib/template/styleprofiles.ts", { eager: true }) as Record<
+  string,
+  { recommendedPackFor?: (styleKey: string | null) => string | null }
+>;
+const recommendedPackFor = Object.values(styleProfileModules)[0]?.recommendedPackFor;
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -167,6 +175,15 @@ function Index() {
   const [motionKey, setMotionKey] = useState<string | null>(null);
   const [effectAmount, setEffectAmount] = useState(5);
   const [creativeSource, setCreativeSource] = useState<CreativeSource>("curated");
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [motionAuto, setMotionAuto] = useState(true);
+
+  useMemo(() => {
+    if (motionAuto && recommendedPackFor) {
+      const rec = recommendedPackFor(packKey);
+      if (rec !== motionKey) setMotionKey(rec);
+    }
+  }, [packKey, motionAuto]);
 
   const activeBrand = brandById(brandId ?? brand.activeKitId);
   const activeCopy = copyKitById(copyId ?? brand.activeCopyId);
