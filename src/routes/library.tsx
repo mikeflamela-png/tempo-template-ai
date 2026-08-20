@@ -208,7 +208,7 @@ function LibraryPage() {
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   {FONTS.filter((f) => f.category === cat).map((f) => (
                     <div key={f.key} className="rounded-xl border border-border p-4">
-                      <p className="text-2xl" style={{ fontFamily: f.family }}>
+                      <p className="text-2xl" style={{ fontFamily: f.stack }}>
                         Tempo Aa
                       </p>
                       <p className="mt-1 text-[11px] text-muted-foreground">{f.name}</p>
@@ -247,7 +247,7 @@ function LibraryPage() {
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {CONCEPTS.map((c) => (
               <div key={c.key} className="rounded-xl border border-border p-4">
-                <p className="text-sm font-semibold">{c.name}</p>
+                <p className="text-sm font-semibold">{c.names[0]}</p>
                 <p className="mt-1 text-xs text-muted-foreground">{c.idea}</p>
               </div>
             ))}
