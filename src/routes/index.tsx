@@ -1,24 +1,218 @@
+import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
+import { Loader2, Sparkles } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { TemplateCard } from "@/components/TemplateCard";
+import { BASE_TEMPLATES } from "@/lib/template/library";
+import {
+  COMPLEXITIES,
+  DURATIONS,
+  ENERGIES,
+  FORMATS,
+  PLATFORMS,
+  generateTemplates,
+  regenerateSimilar,
+  type GenerateOptions,
+} from "@/lib/template/generate";
+import { addGenerated, useTemplateStore } from "@/lib/template/store";
+import type { TemplateSpec } from "@/lib/template/types";
 
-// No head() here: the home route inherits title/description/og/twitter from
-// __root.tsx, and ships no og:image so serve-time hosting can inject the
-// project's social preview (explicit og:image or latest screenshot).
 export const Route = createFileRoute("/")({
+  head: () => ({
+    meta: [
+      { title: "Template Lab — generate social video templates" },
+      {
+        name: "description",
+        content:
+          "Describe the video you want, generate animated short-form editing templates, then drop your own clips into the slots.",
+      },
+      { property: "og:title", content: "Template Lab" },
+      {
+        property: "og:description",
+        content: "Generate animated short-form editing templates and swap in your own media.",
+      },
+    ],
+  }),
   component: Index,
 });
 
-// IMPORTANT: Replace this placeholder. See ./README.md for routing conventions.
-function Index() {
+const EXAMPLE =
+  "Create a punchy 10-second footwear ad for Instagram Reels. Premium but energetic. Fast opening, interesting transitions, minimal typography, strong product ending.";
+
+const CATEGORIES = [
+  "All",
+  "Saved",
+  "Footwear",
+  "Fashion",
+  "Outdoor",
+  "Beverage",
+  "Beauty",
+  "Product",
+  "Lifestyle",
+  "Performance Ads",
+];
+
+function Chips<T extends string | number>({
+  label,
+  options,
+  value,
+  onChange,
+  suffix,
+}: {
+  label: string;
+  options: readonly T[];
+  value: T;
+  onChange: (v: T) => void;
+  suffix?: string;
+}) {
   return (
-    <div
-      className="flex min-h-screen items-center justify-center"
-      style={{ backgroundColor: "#fcfbf8" }}
-    >
-      <img
-        data-lovable-blank-page-placeholder="REMOVE_THIS"
-        src="https://cdn.gpteng.co/blank-app-v1.svg"
-        alt="Your app will live here!"
-      />
+    <div className="space-y-2">
+      <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">{label}</p>
+      <div className="flex flex-wrap gap-2">
+        {options.map((o) => (
+          <button
+            key={String(o)}
+            onClick={() => onChange(o)}
+            className={`rounded-full border px-3.5 py-1.5 text-sm transition-colors ${
+              o === value
+                ? "border-primary bg-primary text-primary-foreground"
+                : "border-border text-muted-foreground hover:border-foreground/40 hover:text-foreground"
+            }`}
+          >
+            {String(o)}
+            {suffix}
+          </button>
+        ))}
+      </div>
     </div>
+  );
+}
+
+function Index() {
+  const { generated, saved } = useTemplateStore();
+  const [prompt, setPrompt] = useState("");
+  const [platform, setPlatform] = useState(PLATFORMS[0]!);
+  const [duration, setDuration] = useState(10);
+  const [format, setFormat] = useState(FORMATS[0]!);
+  const [energy, setEnergy] = useState(ENERGIES[2]!);
+  const [complexity, setComplexity] = useState(COMPLEXITIES[1]!);
+  const [busy, setBusy] = useState(false);
+  const [category, setCategory] = useState("All");
+
+  const opts: GenerateOptions = { prompt, platform, duration, format, energy, complexity };
+
+  const generate = () => {
+    setBusy(true);
+    setTimeout(() => {
+      addGenerated(generateTemplates({ ...opts, prompt: prompt || EXAMPLE }, 4));
+      setBusy(false);
+      document.getElementById("results")?.scrollIntoView({ behavior: "smooth" });
+    }, 450);
+  };
+
+  const similar = (spec: TemplateSpec) => {
+    addGenerated(regenerateSimilar(spec, { ...opts, prompt: prompt || EXAMPLE }, 5));
+    document.getElementById("results")?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  const library = useMemo(() => {
+    if (category === "All") return BASE_TEMPLATES;
+    if (category === "Saved")
+      return [...generated, ...BASE_TEMPLATES].filter((t) => saved.includes(t.id));
+    return BASE_TEMPLATES.filter((t) => t.tags.includes(category));
+  }, [category, generated, saved]);
+
+  return (
+    <main className="min-h-screen">
+      <div className="glow-surface">
+        <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-6">
+          <span className="display-tight text-lg tracking-tight">
+            TEMPLATE<span className="text-primary">LAB</span>
+          </span>
+          <span className="text-xs uppercase tracking-[0.25em] text-muted-foreground">
+            template engine v1
+          </span>
+        </header>
+
+        <section className="mx-auto max-w-3xl px-6 pb-16 pt-10 text-center">
+          <h1 className="display-tight text-5xl sm:text-7xl">What do you want to make?</h1>
+          <p className="mx-auto mt-5 max-w-xl text-sm text-muted-foreground">
+            Describe the video. We design the edit — cuts, transitions, layouts and typography —
+            then you drop your own footage into the slots.
+          </p>
+
+          <div className="mt-10 rounded-3xl border border-border bg-card/70 p-4 text-left backdrop-blur">
+            <Textarea
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              placeholder={EXAMPLE}
+              className="min-h-28 resize-none border-0 bg-transparent text-base shadow-none focus-visible:ring-0"
+            />
+            <div className="mt-4 grid gap-5 border-t border-border pt-5 sm:grid-cols-2">
+              <Chips label="Platform" options={PLATFORMS} value={platform} onChange={setPlatform} />
+              <Chips label="Duration" options={DURATIONS} value={duration} onChange={setDuration} suffix="s" />
+              <Chips label="Format" options={FORMATS} value={format} onChange={setFormat} />
+              <Chips label="Energy" options={ENERGIES} value={energy} onChange={setEnergy} />
+              <div className="sm:col-span-2">
+                <Chips
+                  label="Template complexity"
+                  options={COMPLEXITIES}
+                  value={complexity}
+                  onChange={setComplexity}
+                />
+              </div>
+            </div>
+            <Button
+              onClick={generate}
+              disabled={busy}
+              className="mt-6 h-14 w-full text-base font-extrabold uppercase tracking-[0.18em]"
+            >
+              {busy ? <Loader2 className="size-5 animate-spin" /> : <Sparkles className="size-5" />}
+              Generate Templates
+            </Button>
+          </div>
+        </section>
+      </div>
+
+      {generated.length > 0 && (
+        <section id="results" className="mx-auto max-w-6xl px-6 pb-20">
+          <h2 className="display-tight mb-8 text-2xl">Generated concepts</h2>
+          <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-4">
+            {generated.slice(0, 12).map((spec) => (
+              <TemplateCard key={spec.id} spec={spec} onRegenerate={similar} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      <section className="mx-auto max-w-6xl px-6 pb-28">
+        <div className="mb-8 flex flex-wrap items-center gap-3">
+          <h2 className="display-tight mr-4 text-2xl">Template library</h2>
+          {CATEGORIES.map((c) => (
+            <button
+              key={c}
+              onClick={() => setCategory(c)}
+              className={`rounded-full px-3 py-1 text-xs uppercase tracking-widest transition-colors ${
+                c === category
+                  ? "bg-foreground text-background"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {c}
+            </button>
+          ))}
+        </div>
+        {library.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Nothing here yet.</p>
+        ) : (
+          <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-4">
+            {library.map((spec) => (
+              <TemplateCard key={spec.id} spec={spec} onRegenerate={similar} />
+            ))}
+          </div>
+        )}
+      </section>
+    </main>
   );
 }
