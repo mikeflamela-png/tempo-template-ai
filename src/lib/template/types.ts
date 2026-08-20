@@ -7,19 +7,55 @@ export type Purpose =
   | "hero";
 
 export const LAYOUTS = [
+  // full screen
   "full",
+  // vertical / horizontal splits
   "split-left",
   "split-right",
   "split-top",
   "split-bottom",
+  // diagonal split
+  "diag-left",
+  "diag-right",
+  // 3-up columns
+  "col-1",
+  "col-2",
+  "col-3",
+  // 2x2 grid / 4-up
   "grid-tl",
   "grid-tr",
   "grid-bl",
   "grid-br",
+  // stacked frames (3 horizontal bands)
+  "stack-1",
+  "stack-2",
+  "stack-3",
+  // overlapping frames
+  "overlap-a",
+  "overlap-b",
+  // floating / bordered / inset
   "pip",
   "floating",
+  "bordered",
+  "inset",
   "band",
   "tall-inset",
+  // sliding panels
+  "panel-left",
+  "panel-right",
+  // mosaic
+  "mosaic-a",
+  "mosaic-b",
+  "mosaic-c",
+  // contact sheet (3x3-ish)
+  "sheet-1",
+  "sheet-2",
+  "sheet-3",
+  "sheet-4",
+  // film strip
+  "strip-1",
+  "strip-2",
+  "strip-3",
 ] as const;
 export type Layout = (typeof LAYOUTS)[number];
 
@@ -27,6 +63,8 @@ export const ANIMATIONS = [
   "none",
   "punch_in",
   "push_in",
+  "slow_push_in",
+  "aggressive_push_in",
   "pull_out",
   "slide_left",
   "slide_right",
@@ -34,13 +72,26 @@ export const ANIMATIONS = [
   "slide_down",
   "snap_zoom",
   "scale_bounce",
+  "elastic_scale",
+  "overshoot",
+  "bounce",
+  "snap_move",
   "drift",
   "pan_left",
   "pan_right",
+  "pan_up",
+  "pan_down",
   "freeze",
   "blur_in",
   "mask_reveal",
   "expand",
+  "collapse",
+  "subtle_rotate",
+  "rotate_snap",
+  "float",
+  "perspective_tilt",
+  "handheld",
+  "smear_in",
 ] as const;
 export type Animation = (typeof ANIMATIONS)[number];
 
@@ -53,6 +104,22 @@ export const TRANSITIONS = [
   "wipe_up",
   "scale_out",
   "mask_out",
+  "punch_zoom",
+  "match_zoom",
+  "snap_zoom_out",
+  "directional_blur",
+  "slide_out",
+  "push_out",
+  "rotate_out",
+  "mask_wipe",
+  "shape_wipe",
+  "expand_frame",
+  "collapse_frame",
+  "film_splice",
+  "rgb_split",
+  "blur_pulse",
+  "stretch",
+  "smear",
 ] as const;
 export type Transition = (typeof TRANSITIONS)[number];
 
@@ -85,7 +152,16 @@ export type TextStyleName =
   | "centered_statement"
   | "edge_aligned"
   | "masked_reveal"
-  | "cta_lockup";
+  | "cta_lockup"
+  | "word_by_word"
+  | "tracking_in"
+  | "vertical_type"
+  | "ticker"
+  | "outlined"
+  | "giant_word"
+  | "stat_callout"
+  | "subtitle"
+  | "highlight_bar";
 
 export interface TextSlot {
   id: string;
@@ -99,8 +175,28 @@ export interface TextSlot {
   accent?: boolean;
 }
 
+export type OverlayType =
+  | "flash"
+  | "bar_wipe"
+  | "grain"
+  | "vignette"
+  | "progress"
+  | "frame_line"
+  | "halation"
+  | "light_leak"
+  | "camcorder"
+  | "timestamp"
+  | "chromatic"
+  | "blur_pulse"
+  | "bloom"
+  | "film_border"
+  | "paper"
+  | "noise"
+  | "posterize"
+  | "rgb_separation";
+
 export interface Overlay {
-  type: "flash" | "bar_wipe" | "grain" | "vignette" | "progress" | "frame_line";
+  type: OverlayType;
   start: number;
   duration: number;
   accent?: boolean;
@@ -114,6 +210,40 @@ export interface CreativeProfile {
   transitionStyle: string;
   structure: string;
 }
+
+/** The authored idea a template is built around. */
+export interface CreativeDirection {
+  conceptKey: string;
+  conceptName: string;
+  creativeIdea: string;
+  pacingStrategy: string;
+  visualMotif: string;
+  transitionMotif: string;
+  typographyMotif: string;
+  layoutMotif: string;
+  openingStrategy: string;
+  middleStrategy: string;
+  endingStrategy: string;
+  surpriseMoment: string;
+  surpriseKind: SurpriseKind;
+  surpriseAt: number;
+  restraintRules: string[];
+  fontKey: string;
+  rhythmKey: string;
+  textureKeys: string[];
+}
+
+export type SurpriseKind =
+  | "split_screen"
+  | "freeze_frame"
+  | "typography_takeover"
+  | "three_shot_burst"
+  | "layout_collapse"
+  | "film_strip"
+  | "unexpected_pause"
+  | "frame_within_frame"
+  | "giant_word"
+  | "abrupt_scale";
 
 export interface Palette {
   bg: string;
@@ -135,6 +265,9 @@ export interface TemplateSpec {
   overlays: Overlay[];
   beatMarkers: number[];
   creativeProfile: CreativeProfile;
+  /** Google font key from the font library. */
+  fontKey?: string;
+  direction?: CreativeDirection;
 }
 
 export interface MediaAssignment {

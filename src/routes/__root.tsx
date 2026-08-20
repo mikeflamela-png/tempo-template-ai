@@ -10,6 +10,7 @@ import {
 import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
+import { GOOGLE_FONTS_HREF } from "@/lib/template/fonts";
 import { Toaster } from "@/components/ui/sonner";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 
@@ -100,6 +101,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         rel: "stylesheet",
         href: "https://fonts.googleapis.com/css2?family=Archivo:wght@300;400;500;600;700;800;900&display=swap",
       },
+      { rel: "stylesheet", href: GOOGLE_FONTS_HREF },
       {
         rel: "stylesheet",
         href: appCss,
