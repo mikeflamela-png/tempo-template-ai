@@ -108,6 +108,7 @@ export const BUILTIN_BLUEPRINTS: Blueprint[] = [
 ];
 
 const KEY = "tempo.blueprints.v1";
+const EMPTY: Blueprint[] = [];
 let custom: Blueprint[] = [];
 let hydrated = false;
 const listeners = new Set<() => void>();
@@ -163,7 +164,7 @@ export function useBlueprints() {
       return () => listeners.delete(l);
     },
     () => custom,
-    () => [] as Blueprint[],
+    () => EMPTY,
   );
 }
 
