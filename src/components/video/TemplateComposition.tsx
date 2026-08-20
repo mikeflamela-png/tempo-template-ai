@@ -24,6 +24,8 @@ import { fontByKey } from "@/lib/template/fonts";
 import { placeholderFor } from "@/lib/template/placeholders";
 import { CreativeEventLayer } from "./CreativeEventLayer";
 import { GraphicLayer } from "./GraphicLayer";
+import { MotionAssetLayer } from "./MotionAssetLayer";
+
 
 
 /* ------------------------------------------------------------------ motion */
@@ -1180,7 +1182,14 @@ export const TemplateVideo: React.FC<TemplateVideoProps> = ({
             <CreativeEventLayer event={ev} spec={spec} media={media} />
           </Sequence>
         ))}
+      <MotionAssetLayer
+        events={spec.motionAssets ?? []}
+        width={spec.width}
+        height={spec.height}
+        fps={spec.fps}
+      />
     </AbsoluteFill>
+
   );
 
 };

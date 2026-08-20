@@ -4,9 +4,21 @@ export type RenderStage =
   | "idle"
   | "preparing"
   | "uploading"
+  | "queued"
   | "rendering"
+  | "encoding"
   | "done"
   | "error";
+
+export type ExportFormat = "vertical" | "square" | "landscape";
+
+export const EXPORT_FORMATS: { key: ExportFormat; label: string; width: number; height: number }[] = [
+  { key: "vertical", label: "Vertical Social", width: 1080, height: 1920 },
+  { key: "square", label: "Square", width: 1080, height: 1080 },
+  { key: "landscape", label: "Landscape", width: 1920, height: 1080 },
+];
+
+export type ExportQuality = "standard" | "high";
 
 export interface RenderJobPayload {
   spec: TemplateSpec;
@@ -20,6 +32,8 @@ export interface RenderJobPayload {
     codec: "h264";
     container: "mp4";
     crf?: number;
+    quality?: ExportQuality;
+    format?: ExportFormat;
   };
 }
 
@@ -35,7 +49,9 @@ export function buildJob(
   media: MediaMap,
   textOverrides: Record<string, string>,
   audio: { name: string; trimStart: number; volume: number } | null,
+  output?: { format?: ExportFormat; quality?: ExportQuality },
 ): RenderJobPayload {
+  const fmt = EXPORT_FORMATS.find((f) => f.key === (output?.format ?? "vertical")) ?? EXPORT_FORMATS[0]!;
   return {
     spec,
     textOverrides,
@@ -47,8 +63,10 @@ export function buildJob(
     ),
     audio,
     output: {
-      width: spec.width,
-      height: spec.height,
+      width: output?.format ? fmt.width : spec.width,
+      height: output?.format ? fmt.height : spec.height,
+      quality: output?.quality ?? "high",
+      format: output?.format ?? "vertical",
       fps: spec.fps,
       codec: "h264",
       container: "mp4",

@@ -31,6 +31,10 @@ import { GraphicsPanel } from "@/components/editor/GraphicsPanel";
 import { TextInspector } from "@/components/editor/TextInspector";
 import { ExportDialog } from "@/components/editor/ExportDialog";
 import { MomentEditor } from "@/components/editor/MomentEditor";
+import VariationMatrix from "@/components/creative/VariationMatrix";
+import FeedbackDialog from "@/components/taste/FeedbackDialog";
+import { brandById, copyKitById, useBrandStore } from "@/lib/brand/store";
+import { Heart, ThumbsDown } from "lucide-react";
 import type {
   GraphicSlot,
   MediaAssignment,
@@ -83,6 +87,10 @@ function EditorPage() {
   const [tightness, setTightness] = useState(0.5);
   const [syncedSpec, setSyncedSpec] = useState<TemplateSpec | null>(null);
   const [playhead, setPlayhead] = useState(0);
+  const [feedback, setFeedback] = useState<"love" | "dislike" | null>(null);
+  const brandStore = useBrandStore();
+  const activeBrand = brandById(brandStore.activeKitId);
+  const activeCopy = copyKitById(brandStore.activeCopyId);
 
   const playerRef = useRef<PlayerRef>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -357,6 +365,32 @@ function EditorPage() {
 
         {/* inspector */}
         <aside className="min-h-0 space-y-6 overflow-y-auto border-l border-border p-4">
+          <div className="flex gap-2">
+            <Button variant="secondary" size="sm" className="flex-1" onClick={() => setFeedback("love")}>
+              <Heart className="size-3.5" /> Love this
+            </Button>
+            <Button variant="ghost" size="sm" className="flex-1" onClick={() => setFeedback("dislike")}>
+              <ThumbsDown className="size-3.5" /> Not it
+            </Button>
+          </div>
+          <FeedbackDialog
+            targetId={spec.id}
+            kind={feedback ?? "love"}
+            open={feedback !== null}
+            onOpenChange={(o) => !o && setFeedback(null)}
+          />
+          <VariationMatrix
+            base={spec}
+            media={previewMedia}
+            textOverrides={texts}
+            audio={audio}
+            brand={activeBrand}
+            copy={activeCopy}
+            onSelect={(next) => {
+              setSyncedSpec(next);
+              setEdits((prev) => ({ ...prev, ...next }));
+            }}
+          />
           <MomentEditor
             spec={spec}
             media={previewMedia}

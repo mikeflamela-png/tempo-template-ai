@@ -7,12 +7,12 @@ export interface PlayerProps {
   spec: TemplateSpec;
   media: MediaMap;
   textOverrides: Record<string, string>;
-  audio?: AudioTrack | null;
-  controls?: boolean;
-  autoPlay?: boolean;
-  loop?: boolean;
-  clickToPlay?: boolean;
-  initialFrame?: number;
+  audio?: AudioTrack | null | undefined;
+  controls?: boolean | undefined;
+  autoPlay?: boolean | undefined;
+  loop?: boolean | undefined;
+  clickToPlay?: boolean | undefined;
+  initialFrame?: number | undefined;
 }
 
 const TemplatePlayerInner = forwardRef<PlayerRef, PlayerProps>(function Inner(

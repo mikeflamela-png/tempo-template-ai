@@ -28,6 +28,9 @@ import { STYLE_PACKS, applyStylePack, stylePackByKey } from "@/lib/template/styl
 import { syncSpecToTrack } from "@/lib/template/sync";
 import { useBrandStore, brandById, copyKitById, fontWarnings } from "@/lib/brand/store";
 import { applyBrand } from "@/lib/brand/apply";
+import { applyTypeSystems, typeSystemsForBrand } from "@/lib/brand/typesystems";
+import { appendEndCard, endCardsForBrand } from "@/lib/brand/endcards";
+import { rankByTaste } from "@/lib/taste/profile";
 import { MOTION_PACKS, packByKey, applyMotionPack } from "@/lib/motion/packs";
 import { allBlueprints, blueprintById, applyBlueprint, useBlueprints } from "@/lib/blueprint/library";
 import { Link } from "@tanstack/react-router";
@@ -190,9 +193,25 @@ function Index() {
       spec = applyBlueprint(spec, blueprint);
       spec = applyMotionPack(spec, motion, effectAmount);
       spec = applyBrand(spec, activeBrand, activeCopy);
+      if (activeBrand) {
+        const systems = typeSystemsForBrand(activeBrand.id);
+        if (systems.length) spec = applyTypeSystems(spec, systems);
+        const card = endCardsForBrand(activeBrand.id)[0];
+        if (card) spec = appendEndCard(spec, card, activeBrand);
+      }
       return spec;
     });
     if (musicFirst && audio?.beatMap) out = out.map((s) => syncSpecToTrack(s, audio, 0.7));
+    // Learned taste decides which of the candidates lead.
+    out = rankByTaste(out, (s, w) => {
+      const shots = s.mediaSlots.length || 1;
+      const avgShot = s.duration / shots;
+      const shotFit = 1 - Math.min(1, Math.abs(avgShot - (2.4 - w.pacing * 1.8)) / 2);
+      const textFit = 1 - Math.min(1, Math.abs(s.textSlots.length / shots - w.typographyDensity));
+      const fxFit =
+        1 - Math.min(1, Math.abs((s.creativeEvents ?? []).length / shots - w.effectDensity));
+      return (shotFit + textFit + fxFit) / 3;
+    });
     return out;
   };
 
