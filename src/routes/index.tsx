@@ -165,7 +165,7 @@ function Index() {
   const [copyId, setCopyId] = useState<string | null>(null);
   const [blueprintId, setBlueprintId] = useState<string | null>(null);
   const [motionKey, setMotionKey] = useState<string | null>(null);
-  const [effectAmount, setEffectAmount] = useState(5);
+  const [creativeSource, setCreativeSource] = useState<CreativeSource>("curated");
 
   const activeBrand = brandById(brandId ?? brand.activeKitId);
   const activeCopy = copyKitById(copyId ?? brand.activeCopyId);
