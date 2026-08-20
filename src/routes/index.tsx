@@ -26,8 +26,13 @@ import {
 import { addGenerated, useTemplateStore } from "@/lib/template/store";
 import { STYLE_PACKS, applyStylePack, stylePackByKey } from "@/lib/template/stylepacks";
 import { syncSpecToTrack } from "@/lib/template/sync";
+import { useBrandStore, brandById, copyKitById, fontWarnings } from "@/lib/brand/store";
+import { applyBrand } from "@/lib/brand/apply";
+import { MOTION_PACKS, packByKey, applyMotionPack } from "@/lib/motion/packs";
+import { allBlueprints, blueprintById, applyBlueprint, useBlueprints } from "@/lib/blueprint/library";
 import { Link } from "@tanstack/react-router";
 import type { TemplateSpec } from "@/lib/template/types";
+
 
 export const Route = createFileRoute("/")({
   head: () => ({
