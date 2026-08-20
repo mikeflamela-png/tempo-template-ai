@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { AlertTriangle, ArrowLeft, CheckCircle2, CircleSlash, Loader2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 
 export const Route = createFileRoute("/settings/rendering")({
   head: () => ({
@@ -193,8 +192,4 @@ function StatusIcon({ status }: { status: "connected" | "not-configured" | "unre
   if (status === "connected") return <CheckCircle2 className="size-5 text-emerald-400" />;
   if (status === "unreachable") return <AlertTriangle className="size-5 text-amber-400" />;
   return <CircleSlash className="size-5 text-muted-foreground" />;
-}
-
-export function RenderStatusBadge() {
-  return <Badge variant="secondary">rendering</Badge>;
 }

@@ -441,6 +441,27 @@ function Index() {
 
               <div className="space-y-2 sm:col-span-2">
                 <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
+                  Creative source
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {CREATIVE_SOURCES.map((s) => (
+                    <Pill
+                      key={s.key}
+                      active={creativeSource === s.key}
+                      onClick={() => setCreativeSource(s.key)}
+                      title={s.blurb}
+                    >
+                      {s.label}
+                    </Pill>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {CREATIVE_SOURCES.find((s) => s.key === creativeSource)?.blurb}
+                </p>
+              </div>
+
+              <div className="space-y-2 sm:col-span-2">
+                <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
                   Effect amount
                 </p>
                 <Slider
