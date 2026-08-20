@@ -116,8 +116,8 @@ export function defaultEndCard(brandId: string, kit?: BrandKit | null): Omit<End
     brandId,
     name: "End Card",
     variant: "primary",
-    logoAssetId: logo?.id,
-    productAssetId: product?.id,
+    ...(logo ? { logoAssetId: logo.id } : {}),
+    ...(product ? { productAssetId: product.id } : {}),
     background: "brand",
     cta: kit?.ctas[0] ?? "Shop now",
     url: "",
@@ -283,6 +283,7 @@ export function appendEndCard(spec: TemplateSpec, card: EndCard, kit?: BrandKit 
     motionAssets,
     palette,
     endCardId: card.id,
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
     typeSystemIds: card.typeSystemId
       ? [...new Set([...(stripped.typeSystemIds ?? []), card.typeSystemId])]
       : stripped.typeSystemIds,
