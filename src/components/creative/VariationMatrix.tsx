@@ -33,7 +33,7 @@ export interface VariationMatrixProps {
   brand?: BrandKit | null | undefined;
   copy?: CopyKit | null | undefined;
   blueprintIds?: string[] | undefined;
-  onSelect?: (spec: TemplateSpec) => void | undefined;
+  onSelect?: (spec: TemplateSpec) => void;
 }
 
 export default function VariationMatrix({
@@ -80,9 +80,9 @@ export default function VariationMatrix({
     const generated = buildVariations(base, {
       dimensions: dims,
       counts,
-      brand,
-      copy,
-      blueprintIds,
+      ...(brand !== undefined ? { brand } : {}),
+      ...(copy !== undefined ? { copy } : {}),
+      ...(blueprintIds !== undefined ? { blueprintIds } : {}),
       seed: Math.floor(Math.random() * 1e9),
     });
     setVariants(generated);
@@ -90,7 +90,11 @@ export default function VariationMatrix({
   }
 
   function makeAnotherLikeThis() {
-    const next = keepChangeVariant(base, keep, { brand, copy, blueprintIds });
+    const next = keepChangeVariant(base, keep, {
+      ...(brand !== undefined ? { brand } : {}),
+      ...(copy !== undefined ? { copy } : {}),
+      ...(blueprintIds !== undefined ? { blueprintIds } : {}),
+    });
     setKeepVariant(next);
     addGenerated([next]);
   }
@@ -150,8 +154,8 @@ export default function VariationMatrix({
               base={base}
               media={media}
               textOverrides={textOverrides}
-              audio={audio}
-              onSelect={onSelect}
+              {...(audio !== undefined ? { audio } : {})}
+              {...(onSelect ? { onSelect } : {})}
             />
           ))}
         </div>
@@ -188,8 +192,8 @@ export default function VariationMatrix({
               base={base}
               media={media}
               textOverrides={textOverrides}
-              audio={audio}
-              onSelect={onSelect}
+              {...(audio !== undefined ? { audio } : {})}
+              {...(onSelect ? { onSelect } : {})}
             />
           </div>
         )}
@@ -211,7 +215,7 @@ function VariantCard({
   media: MediaMap;
   textOverrides: Record<string, string>;
   audio?: AudioTrack | null | undefined;
-  onSelect?: (spec: TemplateSpec) => void | undefined;
+  onSelect?: (spec: TemplateSpec) => void;
 }) {
   const diff = useMemo(() => creativeDiff(base, spec), [base, spec]);
   const changed = diff.filter((d) => d.change === "changed");
@@ -226,7 +230,7 @@ function VariantCard({
           spec={spec}
           media={media}
           textOverrides={textOverrides}
-          audio={audio}
+          audio={audio ?? null}
           controls={false}
           autoPlay={false}
           loop

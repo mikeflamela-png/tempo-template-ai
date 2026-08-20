@@ -91,6 +91,7 @@ function Preview({ card, brandColors, logoUrl, productUrl, backgroundUrl }: {
 
 export default function EndCardBuilder({ brandId }: { brandId: string }) {
   useEndCards();
+  const kit = brandById(brandId);
   useTypeSystems();
   useEndCards();
   const cards = useMemo(() => endCardsForBrand(brandId), [brandId]);
