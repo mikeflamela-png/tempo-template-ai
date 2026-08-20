@@ -83,9 +83,29 @@ export const FONT_CATEGORIES: FontCategory[] = [
 
 export const DEFAULT_FONT = FONTS[0]!;
 
+/**
+ * Uploaded brand fonts register themselves here at runtime so the whole
+ * renderer (player + worker composition) can resolve them by key.
+ */
+const runtime = new Map<string, FontDef>();
+
+export function registerRuntimeFont(def: FontDef) {
+  runtime.set(def.key, def);
+}
+
+export function unregisterRuntimeFont(key: string) {
+  runtime.delete(key);
+}
+
+export function runtimeFonts(): FontDef[] {
+  return [...runtime.values()];
+}
+
 export function fontByKey(key?: string): FontDef {
+  if (key && runtime.has(key)) return runtime.get(key)!;
   return FONTS.find((x) => x.key === key) ?? DEFAULT_FONT;
 }
+
 
 export function fontsIn(category: FontCategory): FontDef[] {
   return FONTS.filter((x) => x.category === category);
