@@ -102,6 +102,13 @@ const browserOpt = BROWSER ? { browserExecutable: BROWSER } : {};
 const app = express();
 app.use(cors());
 app.use("/assets", express.static(ASSETS));
+// Serve the prebuilt Remotion bundle from THIS listener. If we hand Remotion a
+// local directory it starts its own static server (default port 3000), which
+// Render detects as a second open port and then routes traffic to — the source
+// of the 502s. Passing an http:// serveUrl keeps exactly one listener alive.
+app.use("/bundle", express.static(BUNDLE_DIR));
+const SERVE_URL = `http://127.0.0.1:${PORT}/bundle/index.html`;
+
 
 // Multer streams every part straight to disk — nothing is buffered in memory.
 const upload = multer({
