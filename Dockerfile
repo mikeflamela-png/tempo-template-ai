@@ -7,7 +7,7 @@
 FROM node:20-bookworm-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ffmpeg chromium ca-certificates fonts-liberation libnss3 libdbus-1-3 libatk1.0-0 \
+    ffmpeg chromium iproute2 ca-certificates fonts-liberation libnss3 libdbus-1-3 libatk1.0-0 \
     libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 \
     libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2 libpango-1.0-0 \
     libcairo2 libxshmfence1 \
@@ -17,6 +17,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 ENV BROWSER_EXECUTABLE=/usr/bin/chromium
 ENV REMOTION_SKIP_BROWSER_DOWNLOAD=1
 ENV REMOTION_BUNDLE_DIR=/app/render-worker/bundle
+ARG RENDER_GIT_COMMIT=unknown
+ARG WORKER_BUILD_TIME=unknown
+ENV RENDER_GIT_COMMIT=$RENDER_GIT_COMMIT
+ENV WORKER_BUILD_TIME=$WORKER_BUILD_TIME
 
 WORKDIR /app
 COPY . .

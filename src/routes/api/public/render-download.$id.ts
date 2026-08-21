@@ -23,7 +23,7 @@ export const Route = createFileRoute("/api/public/render-download/$id")({
             "content-type": "video/mp4",
             "content-disposition": `attachment; filename="tempo-${params.id.slice(0, 8)}.mp4"`,
             ...(upstream.headers.get("content-length")
-              ? { "content-length": upstream.headers.get("content-length")! }
+              ? { "content-length": upstream.headers.get("content-length") ?? "" }
               : {}),
           },
         });
