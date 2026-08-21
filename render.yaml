@@ -4,8 +4,8 @@
 #   2. render.com → New → Blueprint → pick this repo → Apply
 #   3. Copy the service URL, paste it into Tempo → Settings → Rendering
 #
-# Nothing else to configure: the Dockerfile installs Chromium + ffmpeg and
-# PUBLIC_URL is filled in automatically from the service's own hostname.
+# The Dockerfile bakes in ffmpeg, Chromium and the prebuilt Remotion bundle,
+# and PUBLIC_URL is filled in automatically from the service's own hostname.
 services:
   - type: web
     name: tempo-render-worker
@@ -15,7 +15,9 @@ services:
     healthCheckPath: /health
     autoDeploy: true
     envVars:
-      - key: PORT
-        value: 8787
       - key: RENDER_CONCURRENCY
         value: 1
+      - key: BROWSER_EXECUTABLE
+        value: /usr/bin/chromium
+      - key: REMOTION_BUNDLE_DIR
+        value: /app/render-worker/bundle
