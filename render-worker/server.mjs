@@ -26,8 +26,7 @@ import os from "node:os";
 import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { execFileSync, spawnSync } from "node:child_process";
-import { RenderInternals, openBrowser } from "@remotion/renderer";
-import { NoReactInternals } from "remotion/no-react";
+import { openBrowser, renderMedia, selectComposition } from "@remotion/renderer";
 import express from "express";
 import multer from "multer";
 import cors from "cors";
@@ -108,20 +107,6 @@ mem("startup");
 const browserOpt = BROWSER ? { browserExecutable: BROWSER } : {};
 const LOG_LEVEL = "info";
 const CHROMIUM_OPTIONS = { gl: "swangle", headless: true };
-
-const serializeProps = (data) =>
-  NoReactInternals.serializeJSONWithSpecialTypes({
-    indent: undefined,
-    staticBase: null,
-    data,
-  }).serializedString;
-
-const onRemotionLog = ({ logLevel, tag, previewString }) => {
-  const message = `[remotion${tag ? `:${tag}` : ""}] ${previewString}`;
-  if (logLevel === "error") console.error(message);
-  else if (logLevel === "warn") console.warn(message);
-  else console.log(message);
-};
 
 function logRemotionCall(api, details) {
   console.log(`[remotion] ${api} inputs=${JSON.stringify(details)}`);
@@ -283,7 +268,6 @@ async function render({ jobId, inputProps, width, height, crf, label }) {
   const outputLocation = path.join(OUT, `${jobId}.mp4`);
   const startedAt = Date.now();
   let browser = null;
-  let remotionServer = null;
   try {
     console.log(`[${label}] render start job=${jobId} serveUrl=${SERVE_URL}`);
     await verifyBundleRoute();
@@ -301,19 +285,6 @@ async function render({ jobId, inputProps, width, height, crf, label }) {
       logLevel: LOG_LEVEL,
     });
     console.log(`[${label}] browser launched id=${browser.id}`);
-    // Remotion requires an off-thread media proxy even for an HTTP serveUrl.
-    // Prepare it explicitly, then attach its request handler to the worker's
-    // existing listener below. No second TCP listener is ever created.
-    const downloadMap = RenderInternals.makeDownloadMap(48000);
-    remotionServer = {
-      serveUrl: SERVE_URL,
-      closeServer: async () => undefined,
-      offthreadPort: PORT,
-      compositor: null,
-      sourceMap: () => null,
-      downloadMap,
-    };
-    const serializedInputProps = serializeProps(inputProps);
     logRemotionCall("selectComposition", {
       serveUrl: SERVE_URL,
       id: "tempo",
@@ -321,34 +292,18 @@ async function render({ jobId, inputProps, width, height, crf, label }) {
       chromeMode: "chrome-for-testing",
       puppeteerInstance: "reused",
     });
-    const selected = await RenderInternals.internalSelectComposition({
+    const base = await selectComposition({
       serveUrl: SERVE_URL,
       id: "tempo",
-      serializedInputPropsWithCustomSchema: serializedInputProps,
+      inputProps,
       puppeteerInstance: browser,
       chromeMode: "chrome-for-testing",
       chromiumOptions: CHROMIUM_OPTIONS,
-      browserExecutable: BROWSER || null,
-      envVariables: {},
-      port: PORT,
-      indent: false,
-      server: remotionServer,
-      timeoutInMilliseconds: RenderInternals.DEFAULT_TIMEOUT,
-      logLevel: LOG_LEVEL,
-      offthreadVideoCacheSizeInBytes: null,
-      binariesDirectory: null,
-      onBrowserDownload: () => ({
-        onProgress: () => undefined,
-        version: null,
-      }),
-      onServeUrlVisited: () => undefined,
-      offthreadVideoThreads: 0,
-      mediaCacheSizeInBytes: null,
+      ...browserOpt,
       onBrowserLog: (l) => {
         if (l.type === "error") console.error(`[${label}] browser: ${l.text}`);
       },
     });
-    const base = selected.metadata;
     console.log(
       `[${label}] composition selected ${base.width}x${base.height} ${base.durationInFrames}f @${base.fps}fps`,
     );
@@ -373,70 +328,18 @@ async function render({ jobId, inputProps, width, height, crf, label }) {
     });
     const ticker = setInterval(() => mem(`${label}-render-tick`), 10_000);
     try {
-      await RenderInternals.internalRenderMedia({
-        composition: {
-          ...composition,
-          props: undefined,
-          defaultProps: undefined,
-        },
-        serializedInputPropsWithCustomSchema: serializedInputProps,
-        serializedResolvedPropsWithCustomSchema: serializeProps(composition.props ?? inputProps),
+      await renderMedia({
+        composition,
         serveUrl: SERVE_URL,
         codec: "h264",
         crf: crf ?? 18,
         outputLocation,
+        inputProps,
         concurrency: CONCURRENCY,
         puppeteerInstance: browser,
         chromeMode: "chrome-for-testing",
         chromiumOptions: CHROMIUM_OPTIONS,
-        browserExecutable: BROWSER || null,
-        server: remotionServer,
-        port: PORT,
-        envVariables: {},
-        frameRange: null,
-        everyNthFrame: 1,
-        overwrite: true,
-        pixelFormat: null,
-        imageFormat: null,
-        jpegQuality: RenderInternals.DEFAULT_JPEG_QUALITY,
-        scale: 1,
-        cancelSignal: undefined,
-        muted: false,
-        enforceAudioTrack: false,
-        ffmpegOverride: undefined,
-        audioBitrate: null,
-        videoBitrate: null,
-        encodingMaxRate: null,
-        encodingBufferSize: null,
-        audioCodec: null,
-        proResProfile: undefined,
-        x264Preset: null,
-        gopSize: null,
-        disallowParallelEncoding: false,
-        numberOfGifLoops: null,
-        preferLossless: false,
-        indent: false,
-        onCtrlCExit: () => undefined,
-        logLevel: LOG_LEVEL,
-        timeoutInMilliseconds: RenderInternals.DEFAULT_TIMEOUT,
-        offthreadVideoCacheSizeInBytes: null,
-        offthreadVideoThreads: 0,
-        colorSpace: "default",
-        repro: false,
-        binariesDirectory: null,
-        separateAudioTo: null,
-        forSeamlessAacConcatenation: false,
-        onBrowserDownload: () => ({ onProgress: () => undefined, version: null }),
-        onDownload: () => undefined,
-        onArtifact: null,
-        metadata: null,
-        compositionStart: 0,
-        hardwareAcceleration: "disable",
-        mediaCacheSizeInBytes: null,
-        licenseKey: null,
-        onLog: onRemotionLog,
-        isProduction: true,
-        sampleRate: composition.defaultSampleRate ?? 48000,
+        ...browserOpt,
         onBrowserLog: (l) => {
           if (l.type === "error") console.error(`[${label}] browser: ${l.text}`);
         },
@@ -496,9 +399,6 @@ async function render({ jobId, inputProps, width, height, crf, label }) {
       } catch (err) {
         console.error(`[${label}] browser close failed`, err?.stack ?? err);
       }
-    }
-    if (remotionServer?.downloadMap?.assetDir) {
-      cleanupFiles([remotionServer.downloadMap.assetDir]);
     }
     listenerSnapshot(`${label}-after-remotion`);
     const port3000After = await checkPort(3000);
