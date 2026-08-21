@@ -14,7 +14,7 @@ export interface SimpleStyle {
   stylePackKey: string;
   /** MOTION_PACKS key chosen automatically for this style */
   motionPackKey: string;
-  creativeSource: "curated" | "balanced" | "tempo" | "mixed";
+  creativeSource: "curated" | "balanced" | "tempo" | "experimental";
   effectAmount: number;
   energy: string;
   pacing: string;
@@ -130,7 +130,7 @@ export const SIMPLE_STYLES: SimpleStyle[] = [
     blurb: "High-risk treatments, Creative Lab material, strange motion.",
     stylePackKey: "riso_print",
     motionPackKey: "type_forward",
-    creativeSource: "mixed",
+    creativeSource: "experimental",
     effectAmount: 8,
     energy: "Playful",
     pacing: "Dynamic",
