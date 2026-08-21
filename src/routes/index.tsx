@@ -558,6 +558,7 @@ function Index() {
 
 
 
+            {mode !== "quick" && (
             <div className="mt-5 space-y-2 border-t border-border pt-5">
               <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
                 Style pack
@@ -589,6 +590,8 @@ function Index() {
                 ))}
               </div>
             </div>
+            )}
+
 
             {audio?.beatMap && (
               <label className="mt-4 flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
