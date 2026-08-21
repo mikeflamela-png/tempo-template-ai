@@ -37,6 +37,8 @@ import { MOTION_PACKS, packByKey, applyMotionPack } from "@/lib/motion/packs";
 import { composeMotion } from "@/lib/motion/compose";
 import { CREATIVE_SOURCES, type CreativeSource } from "@/lib/motion/assets";
 import { allBlueprints, blueprintById, applyBlueprint, useBlueprints } from "@/lib/blueprint/library";
+import { SIMPLE_STYLES, QUICK_LANES, simpleStyleByKey } from "@/lib/template/simplestyles";
+import { restraintPass } from "@/lib/template/restraint";
 import { Link } from "@tanstack/react-router";
 import type { TemplateSpec } from "@/lib/template/types";
 
@@ -150,6 +152,8 @@ function Pill({
 function Index() {
 
   const { generated, saved, audio } = useTemplateStore();
+  const [mode, setMode] = useState<"quick" | "directed" | "experiment">("quick");
+  const [simpleStyleKey, setSimpleStyleKey] = useState<string>("clean");
   const [packKey, setPackKey] = useState<string | null>(null);
   const [musicFirst, setMusicFirst] = useState(false);
   const [prompt, setPrompt] = useState("");
