@@ -17,8 +17,16 @@ export const Route = createFileRoute("/api/public/render-status/$id")({
             { status: 502 },
           );
         }
-        const json = await upstream.json();
-        return Response.json({ configured: true, ...(json as object) });
+        const json = (await upstream.json()) as { url?: string };
+        // Hand the browser a same-origin download link, not the worker's URL.
+        return Response.json({
+          configured: true,
+          ...json,
+          ...(json.url
+            ? { url: `/api/public/render-download/${encodeURIComponent(params.id)}` }
+            : {}),
+        });
+
       },
     },
   },

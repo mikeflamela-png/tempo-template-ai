@@ -45,7 +45,17 @@ const app = express();
 app.use(cors());
 app.use("/assets", express.static(ASSETS));
 
-const upload = multer({ dest: ASSETS, limits: { fileSize: 1024 * 1024 * 1024 } });
+// Keep the original file extension: Chromium refuses to decode media served
+// without a proper content-type, and express.static infers it from the name.
+const upload = multer({
+  storage: multer.diskStorage({
+    destination: ASSETS,
+    filename: (_req, file, cb) =>
+      cb(null, `${randomUUID()}${path.extname(file.originalname || "").slice(0, 10)}`),
+  }),
+  limits: { fileSize: 1024 * 1024 * 1024 },
+});
+
 
 /** jobId -> { state, progress, url, error } */
 const jobs = new Map();
@@ -76,6 +86,74 @@ function auth(req, res) {
 }
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
+
+/**
+ * Real proof-of-life: renders a 2s vertical 1080x1920 H.264 clip through the
+ * exact same Remotion pipeline as a user export. Returns the finished MP4.
+ */
+app.get("/test-render", async (req, res) => {
+  if (!auth(req, res)) return;
+  const spec = {
+    id: "render-test",
+    name: "Render test",
+    duration: 2,
+    fps: 30,
+    width: 1080,
+    height: 1920,
+    tags: [],
+    palette: { bg: "#0b0b0d", ink: "#f5f2ec", accent: "#e8ff54" },
+    mediaSlots: [],
+    textSlots: [
+      {
+        id: "t1",
+        label: "TEST",
+        value: "TEMPO RENDER TEST",
+        start: 0,
+        duration: 2,
+        style: "centered_statement",
+        position: "center",
+        align: "center",
+      },
+    ],
+    overlays: [{ type: "grain", start: 0, duration: 2 }],
+    beatMarkers: [],
+    creativeProfile: {
+      family: "test",
+      energy: "calm",
+      pacing: "steady",
+      typography: "minimal",
+      transitionStyle: "cut",
+      structure: "single",
+    },
+  };
+  const inputProps = { spec, media: {}, textOverrides: {}, audio: null, assetUrls: {}, fontFaces: [] };
+  try {
+    const serveUrl = await getBundle();
+    const composition = await selectComposition({
+      serveUrl,
+      id: "tempo",
+      inputProps,
+      ...(process.env.BROWSER_EXECUTABLE ? { browserExecutable: process.env.BROWSER_EXECUTABLE } : {}),
+    });
+    const outputLocation = path.join(OUT, `test-${randomUUID()}.mp4`);
+    await renderMedia({
+      composition: { ...composition, width: 1080, height: 1920 },
+      serveUrl,
+      codec: "h264",
+      crf: 20,
+      outputLocation,
+      inputProps,
+      concurrency: Number(process.env.RENDER_CONCURRENCY ?? 2),
+      chromiumOptions: { gl: "swangle" },
+      ...(process.env.BROWSER_EXECUTABLE ? { browserExecutable: process.env.BROWSER_EXECUTABLE } : {}),
+    });
+    res.download(outputLocation, "tempo-test.mp4");
+  } catch (err) {
+    console.error("[test-render]", err);
+    res.status(500).json({ ok: false, error: String(err?.stack ?? err?.message ?? err) });
+  }
+});
+
 
 app.post("/render", upload.any(), async (req, res) => {
   if (!auth(req, res)) return;
