@@ -272,152 +272,111 @@ app.get("/health", (_req, res) => {
 
 /* ------------------------------------------------------------------ render */
 
-async function render({ jobId, inputProps, width, height, crf, label }) {
+/**
+ * Runs one render in a dedicated child process.
+ *
+ * Rendering is the only part of this service that can die: Chromium is by far
+ * the fattest process in the container, so when the kernel OOM killer fires it
+ * takes the render down. Keeping it out-of-process means the HTTP listener
+ * survives, the job is marked failed with the real signal, and /health,
+ * /status and /download keep answering.
+ */
+function render({ jobId, inputProps, width, height, crf, label }) {
   activeJobs += 1;
   const outputLocation = path.join(OUT, `${jobId}.mp4`);
+  const cfgPath = path.join(STATE, `${jobId}.cfg.json`);
   const startedAt = Date.now();
-  let browser = null;
-  try {
-    console.log(`[${label}] render start job=${jobId} serveUrl=${SERVE_URL}`);
-    await verifyBundleRoute();
-    listenerSnapshot(`${label}-before-remotion`);
-    const port3000Before = await checkPort(3000);
-    console.log(`[listeners:${label}-before-remotion] port3000Open=${port3000Before}`);
-    mem(`${label}-before-browser`);
-    console.log(
-      `[${label}] browser launch executable=${BROWSER || "remotion-default"} chromeMode=chrome-for-testing gl=swangle`,
-    );
-    browser = await openBrowser("chrome", {
-      ...browserOpt,
-      chromeMode: "chrome-for-testing",
-      chromiumOptions: CHROMIUM_OPTIONS,
-      logLevel: LOG_LEVEL,
-    });
-    console.log(`[${label}] browser launched id=${browser.id}`);
-    logRemotionCall("selectComposition", {
+  fs.writeFileSync(
+    cfgPath,
+    JSON.stringify({
+      jobId,
       serveUrl: SERVE_URL,
-      id: "tempo",
-      browserExecutable: BROWSER || null,
-      chromeMode: "chrome-for-testing",
-      puppeteerInstance: "reused",
-    });
-    const base = await selectComposition({
-      serveUrl: SERVE_URL,
-      id: "tempo",
-      inputProps,
-      puppeteerInstance: browser,
-      chromeMode: "chrome-for-testing",
-      chromiumOptions: CHROMIUM_OPTIONS,
-      port: REMOTION_PROXY_PORT,
-      ...browserOpt,
-      onBrowserLog: (l) => {
-        if (l.type === "error") console.error(`[${label}] browser: ${l.text}`);
-      },
-    });
-    console.log(
-      `[${label}] composition selected ${base.width}x${base.height} ${base.durationInFrames}f @${base.fps}fps`,
-    );
-    mem(`${label}-after-browser`);
-    const composition = { ...base, width: width ?? base.width, height: height ?? base.height };
-    setJob(jobId, { state: "rendering", progress: 0.02 });
-    mem(`${label}-render-start`);
-    logRemotionCall("renderMedia", {
-      serveUrl: SERVE_URL,
-      compositionId: composition.id,
-      width: composition.width,
-      height: composition.height,
-      durationInFrames: composition.durationInFrames,
-      fps: composition.fps,
-      codec: "h264",
-      crf: crf ?? 18,
       outputLocation,
+      inputProps,
+      width,
+      height,
+      crf: crf ?? 18,
       concurrency: CONCURRENCY,
-      browserExecutable: BROWSER || null,
-      chromeMode: "chrome-for-testing",
-      puppeteerInstance: "reused",
-    });
-    const ticker = setInterval(() => mem(`${label}-render-tick`), 10_000);
-    try {
-      await renderMedia({
-        composition,
-        serveUrl: SERVE_URL,
-        codec: "h264",
-        crf: crf ?? 18,
-        outputLocation,
-        inputProps,
-        concurrency: CONCURRENCY,
-        puppeteerInstance: browser,
-        chromeMode: "chrome-for-testing",
-        chromiumOptions: CHROMIUM_OPTIONS,
-      port: REMOTION_PROXY_PORT,
-        ...browserOpt,
-        onBrowserLog: (l) => {
-          if (l.type === "error") console.error(`[${label}] browser: ${l.text}`);
-        },
-        onStart: ({ frameCount }) => console.log(`[${label}] rendering ${frameCount} frames`),
-        onProgress: ({ progress, stitchStage }) => {
-          if (stitchStage === "muxing") console.log(`[${label}] ffmpeg muxing`);
-          setJob(jobId, { state: "rendering", progress });
-        },
-      });
-    } finally {
-      clearInterval(ticker);
-    }
-    const size = fs.existsSync(outputLocation) ? fs.statSync(outputLocation).size : 0;
-    if (size <= 0) throw new Error(`Renderer produced an empty output file at ${outputLocation}`);
-    let probe;
-    try {
-      probe = JSON.parse(
-        execFileSync(
-          "ffprobe",
-          [
-            "-v",
-            "error",
-            "-show_entries",
-            "stream=codec_name,width,height:format=duration,size",
-            "-of",
-            "json",
-            outputLocation,
-          ],
-          { encoding: "utf8" },
-        ),
-      );
-    } catch (err) {
-      throw new Error(`ffprobe validation failed: ${err instanceof Error ? err.message : String(err)}`);
-    }
-    const video = probe.streams?.find((stream) => stream.codec_name === "h264");
-    if (!video || Number(video.width) !== composition.width || Number(video.height) !== composition.height) {
-      throw new Error(`ffprobe found no ${composition.width}x${composition.height} H.264 stream`);
-    }
-    console.log(
-      `[${label}] ffprobe ok codec=${video.codec_name} size=${video.width}x${video.height} duration=${probe.format?.duration}s bytes=${probe.format?.size ?? size}`,
+      browser: BROWSER || null,
+      proxyPort: REMOTION_PROXY_PORT,
+      timeoutMs: Number(process.env.REMOTION_FRAME_TIMEOUT_MS ?? 120_000),
+    }),
+  );
+
+  return new Promise((resolve, reject) => {
+    listenerSnapshot(`${label}-before-remotion`);
+    mem(`${label}-before-child`);
+    const child = spawn(
+      process.execPath,
+      ["--max-old-space-size=512", path.join(__dirname, "render-job.mjs"), cfgPath],
+      { stdio: ["ignore", "inherit", "inherit", "ipc"], env: process.env },
     );
-    console.log(
-      `[${label}] render complete job=${jobId} ${Math.round(
-        (Date.now() - startedAt) / 1000,
-      )}s ${Math.round(size / 1024)}KB peakRSS=${mb(peakRss)}`,
-    );
-    mem(`${label}-render-complete`);
-    return outputLocation;
-  } catch (err) {
-    console.error(`[${label}] render FAILED job=${jobId}`, err?.stack ?? err);
-    throw err;
-  } finally {
-    if (browser) {
-      try {
-        await browser.close({ silent: true });
-        console.log(`[${label}] browser closed`);
-      } catch (err) {
-        console.error(`[${label}] browser close failed`, err?.stack ?? err);
+    console.log(`EXPORT_05_BROWSER_LAUNCHED-pending job=${jobId} childPid=${child.pid}`);
+    let probe = null;
+    let failure = null;
+    let settled = false;
+
+    child.on("message", (msg) => {
+      if (!msg || typeof msg !== "object") return;
+      if (msg.type === "progress") {
+        setJob(jobId, {
+          state: "rendering",
+          progress: Math.min(0.99, Number(msg.progress) || 0),
+          renderedFrames: msg.renderedFrames ?? null,
+          totalFrames: msg.totalFrames ?? null,
+          stage: msg.stitchStage === "muxing" ? "encoding" : "rendering",
+        });
+      } else if (msg.type === "done") {
+        probe = msg.probe;
+      } else if (msg.type === "error") {
+        failure = msg;
       }
-    }
-    listenerSnapshot(`${label}-after-remotion`);
-    const port3000After = await checkPort(3000);
-    console.log(`[listeners:${label}-after-remotion] port3000Open=${port3000After}`);
-    activeJobs -= 1;
-    if (global.gc) global.gc();
-  }
+    });
+
+    child.on("error", (err) => {
+      if (settled) return;
+      settled = true;
+      activeJobs -= 1;
+      console.error(`EXPORT_FAILED_STAGE=child-spawn ERROR=${err?.message} STACK=${err?.stack}`);
+      reject(new Error(`Render process could not start: ${err?.message ?? err}`));
+    });
+
+    child.on("exit", async (code, signal) => {
+      if (settled) return;
+      settled = true;
+      activeJobs -= 1;
+      fs.rmSync(cfgPath, { force: true });
+      console.log(`CHILD_EXIT job=${jobId} code=${code} signal=${signal ?? "none"}`);
+      listenerSnapshot(`${label}-after-remotion`);
+      const port3000After = await checkPort(3000);
+      console.log(`[listeners:${label}-after-remotion] port3000Open=${port3000After}`);
+      mem(`${label}-after-child`);
+      const seconds = Math.round((Date.now() - startedAt) / 1000);
+
+      if (code === 0 && probe && fs.existsSync(outputLocation)) {
+        console.log(
+          `EXPORT_12_JOB_COMPLETED job=${jobId} bytes=${probe.bytes} ${probe.width}x${probe.height} ${probe.duration}s wall=${seconds}s`,
+        );
+        resolve(outputLocation);
+        return;
+      }
+      if (failure) {
+        reject(new Error(`${failure.stage}: ${failure.message}`));
+        return;
+      }
+      if (signal === "SIGKILL") {
+        reject(
+          new Error(
+            "The render process was killed by the host (SIGKILL) — this is an out-of-memory kill on the render instance.",
+          ),
+        );
+        return;
+      }
+      reject(new Error(`Render process exited unexpectedly (code=${code} signal=${signal ?? "none"})`));
+    });
+  });
 }
+
 
 
 /**
