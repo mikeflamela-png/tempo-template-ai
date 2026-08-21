@@ -557,6 +557,8 @@ function Index() {
                   <span>Full treatment</span>
                 </div>
               </div>
+              </>
+              )}
             </div>
 
 
