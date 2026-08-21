@@ -180,19 +180,24 @@ function auth(req, res) {
   return false;
 }
 
+// Deliberately does zero filesystem / render work: it must answer instantly
+// even while a render is saturating the single CPU.
+const BUNDLE_OK = fs.existsSync(path.join(BUNDLE_DIR, "index.html"));
+const BROWSER_OK = BROWSER ? fs.existsSync(BROWSER) : null;
 app.get("/health", (_req, res) => {
   res.json({
     ok: true,
     status: "ready",
-    bundleFound: fs.existsSync(path.join(BUNDLE_DIR, "index.html")),
+    bundleFound: BUNDLE_OK,
     bundlePath: BUNDLE_DIR,
-    browserFound: BROWSER ? fs.existsSync(BROWSER) : null,
+    browserFound: BROWSER_OK,
     browserPath: BROWSER || null,
     concurrency: CONCURRENCY,
     activeJobs,
     peakRssMb: Math.round(peakRss / 1048576),
   });
 });
+
 
 /* ------------------------------------------------------------------ render */
 
