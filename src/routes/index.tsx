@@ -37,6 +37,8 @@ import { MOTION_PACKS, packByKey, applyMotionPack } from "@/lib/motion/packs";
 import { composeMotion } from "@/lib/motion/compose";
 import { CREATIVE_SOURCES, type CreativeSource } from "@/lib/motion/assets";
 import { allBlueprints, blueprintById, applyBlueprint, useBlueprints } from "@/lib/blueprint/library";
+import { SIMPLE_STYLES, QUICK_LANES, simpleStyleByKey } from "@/lib/template/simplestyles";
+import { restraintPass } from "@/lib/template/restraint";
 import { Link } from "@tanstack/react-router";
 import type { TemplateSpec } from "@/lib/template/types";
 
@@ -150,6 +152,8 @@ function Pill({
 function Index() {
 
   const { generated, saved, audio } = useTemplateStore();
+  const [mode, setMode] = useState<"quick" | "directed" | "experiment">("quick");
+  const [simpleStyleKey, setSimpleStyleKey] = useState<string>("clean");
   const [packKey, setPackKey] = useState<string | null>(null);
   const [musicFirst, setMusicFirst] = useState(false);
   const [prompt, setPrompt] = useState("");
@@ -205,14 +209,27 @@ function Index() {
     risk,
   };
 
-  const finish = (specs: TemplateSpec[]) => {
-    const pack = stylePackByKey(packKey);
+  interface FinishConfig {
+    packKey: string | null;
+    motionKey: string | null;
+    creativeSource: CreativeSource;
+    effectAmount: number;
+  }
+
+  const finish = (specs: TemplateSpec[], cfg?: Partial<FinishConfig>) => {
+    const conf: FinishConfig = {
+      packKey: cfg?.packKey !== undefined ? cfg.packKey : packKey,
+      motionKey: cfg?.motionKey !== undefined ? cfg.motionKey : motionKey,
+      creativeSource: cfg?.creativeSource ?? creativeSource,
+      effectAmount: cfg?.effectAmount ?? effectAmount,
+    };
+    const pack = stylePackByKey(conf.packKey);
     const blueprint = blueprintById(blueprintId);
-    const motion = packByKey(motionKey);
+    const motion = packByKey(conf.motionKey);
     let out = specs.map((s) => {
       let spec = pack ? applyStylePack(s, pack) : s;
       spec = applyBlueprint(spec, blueprint);
-      spec = applyMotionPack(spec, motion, effectAmount);
+      spec = applyMotionPack(spec, motion, conf.effectAmount);
       spec = applyBrand(spec, activeBrand, activeCopy);
       if (activeBrand) {
         const systems = typeSystemsForBrand(activeBrand.id);
@@ -223,12 +240,14 @@ function Index() {
       // Restraint + contrast: decide the treatment budget and spend it on the
       // best available material (approved imports first, kernels after).
       spec = composeMotion(spec, {
-        effectAmount,
-        source: creativeSource,
+        effectAmount: conf.effectAmount,
+        source: conf.creativeSource,
         pack: motion ?? null,
         ...(activeBrand ? { brandId: activeBrand.id } : {}),
-        ...(pack ? { styleTags: [pack.key] } : {}),
+        ...(pack ? { styleTags: [pack.key], styleKey: pack.key } : {}),
       }).spec;
+      // Final simplification pass — actively removes, never adds.
+      spec = restraintPass(spec, { effectAmount: conf.effectAmount });
       return spec;
     });
     if (musicFirst && audio?.beatMap) out = out.map((s) => syncSpecToTrack(s, audio, 0.7));
@@ -243,18 +262,59 @@ function Index() {
       return (shotFit + textFit + fxFit) / 3;
     });
     // Reject weak output before it ever reaches the user.
-    out = regenerateGuard(out, {
+    const guarded = regenerateGuard(out, {
       ...(activeBrand ? { brand: activeBrand } : {}),
       ...(activeCopy ? { copy: activeCopy } : {}),
     }).map((r) => r.spec);
-    return out;
+    return guarded.length ? guarded : out;
   };
 
+  const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+
+  /**
+   * QUICK MODE — one edit per creative lane so the four results are
+   * meaningfully different, all inside the chosen style.
+   */
+  const generateQuick = () => {
+    const style = simpleStyleByKey(simpleStyleKey) ?? SIMPLE_STYLES[0]!;
+    const specs = QUICK_LANES.flatMap((lane) => {
+      const laneOpts: GenerateOptions = {
+        prompt: prompt || EXAMPLE,
+        platform,
+        duration,
+        format,
+        energy: lane.energy ?? style.energy,
+        complexity: style.complexity,
+        aesthetic: "Auto",
+        pacing: lane.pacing ?? style.pacing,
+        typography: lane.typography ?? style.typography,
+        transitionIntensity: lane.transitionIntensity ?? style.transitionIntensity,
+        layoutComplexity: lane.layoutComplexity ?? style.layoutComplexity,
+        risk: clamp(style.risk + lane.riskDelta, 1, 10),
+        styleKey: style.stylePackKey,
+      };
+      const amount = clamp(style.effectAmount + lane.effectDelta, 0, 10);
+      const base = generateTemplates(laneOpts, 1);
+      return finish(base, {
+        packKey: style.stylePackKey,
+        motionKey: style.motionPackKey,
+        creativeSource: style.creativeSource,
+        effectAmount: amount,
+      })
+        .slice(0, 1)
+        .map((s) => ({
+          ...s,
+          tags: [...new Set([...s.tags, style.name, lane.label])],
+        }));
+    });
+    addGenerated(specs);
+  };
 
   const generate = () => {
     setBusy(true);
     setTimeout(() => {
-      addGenerated(finish(generateTemplates({ ...opts, prompt: prompt || EXAMPLE }, 4)));
+      if (mode === "quick") generateQuick();
+      else addGenerated(finish(generateTemplates({ ...opts, prompt: prompt || EXAMPLE }, 4)));
       setBusy(false);
       document.getElementById("results")?.scrollIntoView({ behavior: "smooth" });
     }, 450);
@@ -269,6 +329,7 @@ function Index() {
     addGenerated(finish(remixTemplate(spec, { ...opts, prompt: prompt || EXAMPLE }, 4)));
     document.getElementById("results")?.scrollIntoView({ behavior: "smooth" });
   };
+
 
   const library = useMemo(() => {
     if (category === "All") return BASE_TEMPLATES;
@@ -316,6 +377,68 @@ function Index() {
               placeholder={EXAMPLE}
               className="min-h-28 resize-none border-0 bg-transparent text-base shadow-none focus-visible:ring-0"
             />
+            {/* MODES — quick is the default, everything advanced lives deeper */}
+            <div className="mt-4 flex gap-1 rounded-full border border-border p-1">
+              {([
+                ["quick", "Quick"],
+                ["directed", "Directed"],
+                ["experiment", "Experiment"],
+              ] as const).map(([key, label]) => (
+                <button
+                  key={key}
+                  onClick={() => {
+                    setMode(key);
+                    if (key === "experiment") {
+                      setCreativeSource("experimental");
+                      setRisk(8);
+                      setComplexity("Experimental");
+                    }
+                  }}
+                  className={`flex-1 rounded-full px-3 py-1.5 text-[11px] uppercase tracking-[0.18em] transition-colors ${
+                    mode === key
+                      ? "bg-foreground text-background"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {mode === "quick" && (
+              <div className="mt-5 space-y-5 border-t border-border pt-5">
+                <div className="space-y-2">
+                  <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
+                    Style
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {SIMPLE_STYLES.filter((s) => mode === "quick" ? !s.allowsExperimental : true).map((s) => (
+                      <Pill
+                        key={s.key}
+                        active={simpleStyleKey === s.key}
+                        onClick={() => setSimpleStyleKey(s.key)}
+                        title={s.blurb}
+                      >
+                        {s.name}
+                      </Pill>
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {simpleStyleByKey(simpleStyleKey)?.blurb}
+                  </p>
+                </div>
+                <Chips
+                  label="Duration"
+                  options={DURATIONS.slice(0, 5)}
+                  value={duration}
+                  onChange={setDuration}
+                  suffix="s"
+                />
+              </div>
+            )}
+
+            {mode !== "quick" && (
+            <>
             <div className="mt-4 grid gap-5 border-t border-border pt-5 sm:grid-cols-2">
               <Chips label="Platform" options={PLATFORMS} value={platform} onChange={setPlatform} />
               <Chips label="Duration" options={DURATIONS} value={duration} onChange={setDuration} suffix="s" />
@@ -369,6 +492,10 @@ function Index() {
                 </div>
               )}
             </div>
+            </>
+            )}
+
+
 
             <div className="mt-5 grid gap-5 border-t border-border pt-5 sm:grid-cols-2">
               <div className="space-y-2">
@@ -414,7 +541,10 @@ function Index() {
                 </div>
               </div>
 
+              {mode !== "quick" && (
+              <>
               <div className="space-y-2 sm:col-span-2">
+
                 <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
                   Blueprint
                 </p>
@@ -493,10 +623,13 @@ function Index() {
                   <span>Full treatment</span>
                 </div>
               </div>
+              </>
+              )}
             </div>
 
 
 
+            {mode !== "quick" && (
             <div className="mt-5 space-y-2 border-t border-border pt-5">
               <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
                 Style pack
@@ -528,6 +661,8 @@ function Index() {
                 ))}
               </div>
             </div>
+            )}
+
 
             {audio?.beatMap && (
               <label className="mt-4 flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
@@ -550,30 +685,38 @@ function Index() {
               className="mt-6 h-14 w-full text-base font-extrabold uppercase tracking-[0.18em]"
             >
               {busy ? <Loader2 className="size-5 animate-spin" /> : <Sparkles className="size-5" />}
-              Generate Templates
+              {mode === "quick" ? "Generate 4 edits" : "Generate templates"}
             </Button>
-            <button
-              onClick={() => {
-                setPackKey(null);
-                setBlueprintId(null);
-                setMotionKey(null);
-                setCreativeSource("curated");
-                setEffectAmount(4);
-                setRisk(4);
-                generate();
-              }}
-              disabled={busy}
-              className="mt-3 w-full text-[11px] uppercase tracking-[0.2em] text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
-            >
-              Quick generate — let Tempo choose everything
-            </button>
+            {mode === "quick" ? (
+              <p className="mt-3 text-center text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
+                Tempo picks the blueprint, motion kit, type system and pacing
+              </p>
+            ) : (
+              <button
+                onClick={() => {
+                  setPackKey(null);
+                  setBlueprintId(null);
+                  setMotionKey(null);
+                  setCreativeSource("curated");
+                  setEffectAmount(4);
+                  setRisk(4);
+                  setMode("quick");
+                  generate();
+                }}
+                disabled={busy}
+                className="mt-3 w-full text-[11px] uppercase tracking-[0.2em] text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
+              >
+                Quick generate — let Tempo choose everything
+              </button>
+            )}
           </div>
         </section>
       </div>
 
       {generated.length > 0 && (
         <section id="results" className="mx-auto max-w-6xl px-6 pb-20">
-          <h2 className="display-tight mb-8 text-2xl">Generated concepts</h2>
+          <h2 className="display-tight mb-8 text-2xl">Your four edits</h2>
+
           <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-4">
             {generated.slice(0, 12).map((spec) => (
               <TemplateCard key={spec.id} spec={spec} onRegenerate={similar} onRemix={remix} />
