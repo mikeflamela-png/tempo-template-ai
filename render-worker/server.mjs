@@ -6,14 +6,17 @@
  *
  *   node render-worker/server.mjs        # from the repo root
  *
- * It bundles `src/remotion/index.ts` — the SAME composition the browser Player
- * uses — so what you preview is what you export.
+ * Production invariants (see Dockerfile):
+ *   - the Remotion bundle is PREBUILT into the image; runtime bundling is fatal
+ *   - Chromium is BAKED into the image; no browser download at runtime
+ *   - one HTTP listener on process.env.PORT (3000 only as a local fallback)
+ *   - one job at a time, concurrency 1, temp files deleted after delivery
  *
  * Endpoints
  *   POST /render        multipart: `job` (JSON) + any number of asset files
  *   GET  /status/:id    { state, progress, url, error }
  *   GET  /download/:id  the finished MP4
- *   GET  /health
+ *   GET  /health        cheap liveness + readiness (never renders)
  */
 import http from "node:http";
 import fs from "node:fs";
@@ -21,32 +24,86 @@ import path from "node:path";
 import os from "node:os";
 import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
-import { bundle } from "@remotion/bundler";
+import { execFileSync } from "node:child_process";
 import { renderMedia, selectComposition } from "@remotion/renderer";
 import express from "express";
 import multer from "multer";
 import cors from "cors";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const ROOT = path.resolve(__dirname, "..");
 const WORK = path.join(os.tmpdir(), "tempo-render");
 const ASSETS = path.join(WORK, "assets");
 const OUT = path.join(WORK, "out");
-fs.mkdirSync(ASSETS, { recursive: true });
-fs.mkdirSync(OUT, { recursive: true });
+const STATE = path.join(WORK, "jobs");
+for (const dir of [ASSETS, OUT, STATE]) fs.mkdirSync(dir, { recursive: true });
 
-const PORT = Number(process.env.PORT ?? 8787);
+const PORT = Number(process.env.PORT || 3000);
 const TOKEN = process.env.REMOTION_WORKER_TOKEN ?? "";
+const CONCURRENCY = Number(process.env.RENDER_CONCURRENCY ?? 1) || 1;
+const BUNDLE_DIR = process.env.REMOTION_BUNDLE_DIR ?? path.join(__dirname, "bundle");
+const BROWSER = process.env.BROWSER_EXECUTABLE ?? "";
 // Render.com (and most PaaS) inject the public URL for us — no manual config.
 const PUBLIC_URL =
   process.env.PUBLIC_URL ?? process.env.RENDER_EXTERNAL_URL ?? `http://localhost:${PORT}`;
+
+/* ------------------------------------------------------------------ memory */
+
+const mb = (n) => `${Math.round(n / 1048576)}MB`;
+let peakRss = 0;
+function mem(tag) {
+  const m = process.memoryUsage();
+  if (m.rss > peakRss) peakRss = m.rss;
+  console.log(
+    `MEM ${tag} RSS=${mb(m.rss)} heapUsed=${mb(m.heapUsed)} heapTotal=${mb(
+      m.heapTotal,
+    )} external=${mb(m.external)} peakRSS=${mb(peakRss)}`,
+  );
+}
+
+/* ------------------------------------------------------ startup preflight */
+
+console.log("Tempo render worker starting");
+console.log(`PORT=${PORT}`);
+
+if (!fs.existsSync(path.join(BUNDLE_DIR, "index.html"))) {
+  console.error(
+    `FATAL: prebuilt Remotion bundle missing at ${BUNDLE_DIR}. ` +
+      `The image must run render-worker/prebundle.mjs at build time; ` +
+      `runtime bundling is disabled (it OOMs the instance).`,
+  );
+  process.exit(1);
+}
+console.log(`Prebuilt Remotion bundle found: ${BUNDLE_DIR}`);
+
+if (BROWSER) {
+  if (!fs.existsSync(BROWSER)) {
+    console.error(`FATAL: BROWSER_EXECUTABLE set to ${BROWSER} but that file does not exist.`);
+    process.exit(1);
+  }
+  console.log(`Browser executable found: ${BROWSER}`);
+} else {
+  console.log("Browser executable: not pinned (BROWSER_EXECUTABLE unset) — Remotion default");
+}
+
+try {
+  const v = execFileSync("ffmpeg", ["-version"]).toString().split("\n")[0];
+  console.log(`ffmpeg found: ${v}`);
+} catch {
+  console.error("FATAL: ffmpeg not found on PATH.");
+  process.exit(1);
+}
+console.log(`RENDER_CONCURRENCY=${CONCURRENCY}`);
+mem("startup");
+
+const browserOpt = BROWSER ? { browserExecutable: BROWSER } : {};
+
+/* ---------------------------------------------------------------- express */
 
 const app = express();
 app.use(cors());
 app.use("/assets", express.static(ASSETS));
 
-// Keep the original file extension: Chromium refuses to decode media served
-// without a proper content-type, and express.static infers it from the name.
+// Multer streams every part straight to disk — nothing is buffered in memory.
 const upload = multer({
   storage: multer.diskStorage({
     destination: ASSETS,
@@ -56,33 +113,58 @@ const upload = multer({
   limits: { fileSize: 1024 * 1024 * 1024 },
 });
 
-
-/** jobId -> { state, progress, url, error } */
+/** jobId -> { state, progress, url, error } (mirrored to disk so a restart
+ *  does not lose a finished job's id). */
 const jobs = new Map();
+let activeJobs = 0;
 
-const PREBUILT = path.join(__dirname, "bundle");
-
-let bundlePromise = null;
-function getBundle() {
-  // Prefer the bundle baked into the image: webpack at runtime is what pushed
-  // the container over its memory limit and killed the render mid-job.
-  if (fs.existsSync(path.join(PREBUILT, "index.html"))) return Promise.resolve(PREBUILT);
-  if (!bundlePromise) {
-    bundlePromise = bundle({
-      entryPoint: path.join(ROOT, "src/remotion/index.ts"),
-      // the app resolves "@/..." through tsconfig paths; webpack needs it spelled out
-      webpackOverride: (c) => ({
-        ...c,
-        resolve: {
-          ...c.resolve,
-          alias: { ...(c.resolve?.alias ?? {}), "@": path.join(ROOT, "src") },
-        },
-      }),
-    });
+function setJob(id, value) {
+  jobs.set(id, value);
+  if (value.state === "done" || value.state === "error") {
+    try {
+      fs.writeFileSync(path.join(STATE, `${id}.json`), JSON.stringify(value));
+    } catch {
+      /* status is best-effort */
+    }
   }
-  return bundlePromise;
+}
+function getJob(id) {
+  const inMemory = jobs.get(id);
+  if (inMemory) return inMemory;
+  try {
+    return JSON.parse(fs.readFileSync(path.join(STATE, `${id}.json`), "utf8"));
+  } catch {
+    return null;
+  }
 }
 
+function cleanupFiles(files) {
+  for (const f of files ?? []) {
+    try {
+      fs.rmSync(f, { force: true });
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+// Drop render output + state older than 6h so /tmp cannot fill up.
+setInterval(
+  () => {
+    const cutoff = Date.now() - 6 * 3600_000;
+    for (const dir of [OUT, STATE, ASSETS]) {
+      for (const name of fs.readdirSync(dir)) {
+        const p = path.join(dir, name);
+        try {
+          if (fs.statSync(p).mtimeMs < cutoff) fs.rmSync(p, { force: true });
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+  },
+  30 * 60_000,
+).unref();
 
 function auth(req, res) {
   if (!TOKEN) return true;
@@ -91,11 +173,66 @@ function auth(req, res) {
   return false;
 }
 
-app.get("/health", (_req, res) => res.json({ ok: true }));
+app.get("/health", (_req, res) => {
+  res.json({
+    ok: true,
+    status: "ready",
+    bundleFound: fs.existsSync(path.join(BUNDLE_DIR, "index.html")),
+    bundlePath: BUNDLE_DIR,
+    browserFound: BROWSER ? fs.existsSync(BROWSER) : null,
+    browserPath: BROWSER || null,
+    concurrency: CONCURRENCY,
+    activeJobs,
+    peakRssMb: Math.round(peakRss / 1048576),
+  });
+});
+
+/* ------------------------------------------------------------------ render */
+
+async function render({ jobId, inputProps, width, height, crf, label }) {
+  activeJobs += 1;
+  const outputLocation = path.join(OUT, `${jobId}.mp4`);
+  try {
+    mem(`${label}-before-browser`);
+    const base = await selectComposition({
+      serveUrl: BUNDLE_DIR,
+      id: "tempo",
+      inputProps,
+      ...browserOpt,
+    });
+    mem(`${label}-after-browser`);
+    const composition = { ...base, width: width ?? base.width, height: height ?? base.height };
+    setJob(jobId, { state: "rendering", progress: 0.02 });
+    mem(`${label}-render-start`);
+    const ticker = setInterval(() => mem(`${label}-render-tick`), 10_000);
+    try {
+      await renderMedia({
+        composition,
+        serveUrl: BUNDLE_DIR,
+        codec: "h264",
+        crf: crf ?? 18,
+        outputLocation,
+        inputProps,
+        concurrency: CONCURRENCY,
+        chromiumOptions: { gl: "swangle" },
+        ...browserOpt,
+        onProgress: ({ progress }) => setJob(jobId, { state: "rendering", progress }),
+      });
+    } finally {
+      clearInterval(ticker);
+    }
+    mem(`${label}-render-complete`);
+    return outputLocation;
+  } finally {
+    activeJobs -= 1;
+    if (global.gc) global.gc();
+  }
+}
 
 /**
  * Real proof-of-life: renders a 2s vertical 1080x1920 H.264 clip through the
- * exact same Remotion pipeline as a user export. Returns the finished MP4.
+ * exact same Remotion pipeline as a user export. Self-contained — no user
+ * assets, no project state. Returns the finished MP4.
  */
 app.get("/test-render", async (req, res) => {
   if (!auth(req, res)) return;
@@ -133,33 +270,27 @@ app.get("/test-render", async (req, res) => {
     },
   };
   const inputProps = { spec, media: {}, textOverrides: {}, audio: null, assetUrls: {}, fontFaces: [] };
+  const jobId = `test-${randomUUID()}`;
   try {
-    const serveUrl = await getBundle();
-    const composition = await selectComposition({
-      serveUrl,
-      id: "tempo",
+    mem("test-render-accepted");
+    const file = await render({
+      jobId,
       inputProps,
-      ...(process.env.BROWSER_EXECUTABLE ? { browserExecutable: process.env.BROWSER_EXECUTABLE } : {}),
-    });
-    const outputLocation = path.join(OUT, `test-${randomUUID()}.mp4`);
-    await renderMedia({
-      composition: { ...composition, width: 1080, height: 1920 },
-      serveUrl,
-      codec: "h264",
+      width: 1080,
+      height: 1920,
       crf: 20,
-      outputLocation,
-      inputProps,
-      concurrency: Number(process.env.RENDER_CONCURRENCY ?? 2),
-      chromiumOptions: { gl: "swangle" },
-      ...(process.env.BROWSER_EXECUTABLE ? { browserExecutable: process.env.BROWSER_EXECUTABLE } : {}),
+      label: "test",
     });
-    res.download(outputLocation, "tempo-test.mp4");
+    res.download(file, "tempo-test.mp4", () => {
+      cleanupFiles([file]);
+      mem("test-after-cleanup");
+    });
   } catch (err) {
+    mem("test-error");
     console.error("[test-render]", err);
     res.status(500).json({ ok: false, error: String(err?.stack ?? err?.message ?? err) });
   }
 });
-
 
 app.post("/render", upload.any(), async (req, res) => {
   if (!auth(req, res)) return;
@@ -167,11 +298,13 @@ app.post("/render", upload.any(), async (req, res) => {
   try {
     job = JSON.parse(req.body.job);
   } catch {
+    cleanupFiles((req.files ?? []).map((f) => f.path));
     return res.status(400).json({ error: "invalid job payload" });
   }
 
   // map uploaded files onto the spec's media / audio references
   const byField = Object.fromEntries((req.files ?? []).map((f) => [f.fieldname, f]));
+  const uploaded = (req.files ?? []).map((f) => f.path);
   const media = {};
   for (const [slotId, entry] of Object.entries(job.media ?? {})) {
     const file = byField[`media:${slotId}`];
@@ -207,73 +340,53 @@ app.post("/render", upload.any(), async (req, res) => {
   }
 
   const jobId = randomUUID();
-  jobs.set(jobId, { state: "queued", progress: 0 });
+  setJob(jobId, { state: "queued", progress: 0 });
   res.json({ jobId });
+  mem("job-accepted");
 
   (async () => {
     try {
-      const serveUrl = await getBundle();
-      const inputProps = {
-        spec: job.spec,
-        media,
-        textOverrides: job.textOverrides ?? {},
-        audio,
-        assetUrls,
-        fontFaces,
-      };
-      const base = await selectComposition({
-        serveUrl,
-        id: "tempo",
-        inputProps,
-        ...(process.env.BROWSER_EXECUTABLE
-          ? { browserExecutable: process.env.BROWSER_EXECUTABLE }
-          : {}),
-      });
-      // honour the export format chosen in the app (vertical / square / landscape)
-      const composition = {
-        ...base,
-        width: job.output?.width ?? base.width,
-        height: job.output?.height ?? base.height,
-      };
-      const outputLocation = path.join(OUT, `${jobId}.mp4`);
-      jobs.set(jobId, { state: "rendering", progress: 0.02 });
-      await renderMedia({
-        composition,
-        serveUrl,
-        codec: "h264",
+      await render({
+        jobId,
+        inputProps: {
+          spec: job.spec,
+          media,
+          textOverrides: job.textOverrides ?? {},
+          audio,
+          assetUrls,
+          fontFaces,
+        },
+        width: job.output?.width,
+        height: job.output?.height,
         crf: job.output?.crf ?? 18,
-        outputLocation,
-        inputProps,
-        concurrency: Number(process.env.RENDER_CONCURRENCY ?? 2),
-        chromiumOptions: { gl: "swangle" },
-        // optional escape hatch for hosts that already ship a Chromium
-        ...(process.env.BROWSER_EXECUTABLE
-          ? { browserExecutable: process.env.BROWSER_EXECUTABLE }
-          : {}),
-        onProgress: ({ progress }) => jobs.set(jobId, { state: "rendering", progress }),
+        label: "job",
       });
-      jobs.set(jobId, {
-        state: "done",
-        progress: 1,
-        url: `${PUBLIC_URL}/download/${jobId}`,
-      });
+      setJob(jobId, { state: "done", progress: 1, url: `${PUBLIC_URL}/download/${jobId}` });
     } catch (err) {
-      jobs.set(jobId, { state: "error", progress: 0, error: String(err?.message ?? err) });
+      mem("job-error");
+      console.error("[render]", err);
+      setJob(jobId, { state: "error", progress: 0, error: String(err?.message ?? err) });
+    } finally {
+      // source clips are only needed while the render runs
+      cleanupFiles(uploaded);
+      mem("job-after-cleanup");
     }
   })();
 });
 
 app.get("/status/:id", (req, res) => {
   if (!auth(req, res)) return;
-  res.json(jobs.get(req.params.id) ?? { state: "error", error: "unknown job" });
+  res.json(getJob(req.params.id) ?? { state: "error", error: "unknown job" });
 });
 
 app.get("/download/:id", (req, res) => {
-  const file = path.join(OUT, `${req.params.id}.mp4`);
+  const file = path.join(OUT, `${path.basename(req.params.id)}.mp4`);
   if (!fs.existsSync(file)) return res.status(404).end();
+  // res.download streams the file; it is never read into memory.
   res.download(file, "tempo-export.mp4");
 });
 
-http.createServer(app).listen(PORT, () => {
-  console.log(`Tempo render worker listening on ${PUBLIC_URL}`);
+http.createServer(app).listen(PORT, "0.0.0.0", () => {
+  console.log(`Tempo render worker listening on port ${PORT} (${PUBLIC_URL})`);
+  console.log("Worker ready");
 });

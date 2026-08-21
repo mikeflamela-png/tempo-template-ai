@@ -15,7 +15,7 @@ const ROOT = path.resolve(__dirname, "..");
 
 const outDir = await bundle({
   entryPoint: path.join(ROOT, "src/remotion/index.ts"),
-  outDir: path.join(__dirname, "bundle"),
+  outDir: process.env.REMOTION_BUNDLE_DIR ?? path.join(__dirname, "bundle"),
   webpackOverride: (c) => ({
     ...c,
     resolve: {
