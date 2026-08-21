@@ -201,14 +201,39 @@ export function ExportDialog({ spec, media, textOverrides, audio }: Props) {
       if (!res.ok || !data.jobId) throw new Error(data.error ?? "Render worker rejected the job");
 
       const jobId = data.jobId;
-      setStatus({ stage: "queued", progress: 30, message: "Queued…" });
+      setStatus({ stage: "queued", progress: 30, message: "Waking the renderer…" });
+      // Free / small render instances are slow: a long render is normal, and a
+      // single failed status request is not a failed export.
+      let transientErrors = 0;
       const poll = async () => {
-        const s = (await fetch(`/api/public/render-status/${jobId}`).then((r) => r.json())) as {
+        let s: {
           state?: string;
           progress?: number;
+          renderedFrames?: number;
+          totalFrames?: number;
           url?: string;
           error?: string;
         };
+        try {
+          const r = await fetch(`/api/public/render-status/${jobId}`);
+          s = await r.json();
+        } catch {
+          s = {};
+        }
+        if (!s.state) {
+          transientErrors += 1;
+          if (transientErrors > 40) {
+            setStatus({
+              stage: "error",
+              progress: 0,
+              message: "Lost contact with the render service while your export was running.",
+            });
+            return;
+          }
+          timer.current = window.setTimeout(() => void poll(), 3000);
+          return;
+        }
+        transientErrors = 0;
         if (s.state === "done" && s.url) {
           setStatus({
             stage: "done",
@@ -223,19 +248,22 @@ export function ExportDialog({ spec, media, textOverrides, audio }: Props) {
           return;
         }
         const p = s.progress ?? 0;
+        const frames =
+          s.renderedFrames && s.totalFrames ? ` (frame ${s.renderedFrames}/${s.totalFrames})` : "";
         setStatus({
           stage: s.state === "queued" ? "queued" : p > 0.97 ? "encoding" : "rendering",
           progress: 30 + Math.round(p * 68),
           message:
             s.state === "queued"
-              ? "Queued…"
+              ? "Preparing…"
               : p > 0.97
-                ? "Encoding"
-                : `Rendering ${Math.round(p * 100)}%`,
+                ? "Encoding and finalising"
+                : `Rendering ${Math.round(p * 100)}%${frames}`,
         });
-        timer.current = window.setTimeout(() => void poll(), 1200);
+        timer.current = window.setTimeout(() => void poll(), 2000);
       };
       void poll();
+
     } catch (err) {
       setStatus({
         stage: "error",
