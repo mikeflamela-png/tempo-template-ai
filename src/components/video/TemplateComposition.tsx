@@ -4,7 +4,9 @@ import {
   Audio,
   continueRender,
   delayRender,
+  getRemotionEnvironment,
   Img,
+  OffthreadVideo,
   Sequence,
   Video,
   interpolate,
@@ -340,8 +342,11 @@ function MediaFill({
   };
   if (asset?.kind === "video") {
     const speed = asset.speed ?? 1;
+    // Server renders decode with ffmpeg (OffthreadVideo) instead of Chromium,
+    // so exports do not depend on the render machine's browser codecs.
+    const Clip = getRemotionEnvironment().isRendering ? OffthreadVideo : Video;
     return (
-      <Video
+      <Clip
         src={asset.url}
         startFrom={Math.round((asset.inPoint ?? 0) * fps)}
         muted={asset.muted !== false}

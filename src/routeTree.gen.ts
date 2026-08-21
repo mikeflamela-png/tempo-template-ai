@@ -17,6 +17,7 @@ import { Route as EditorIdRouteImport } from './routes/editor.$id'
 import { Route as SettingsRenderingRouteImport } from './routes/settings.rendering'
 import { Route as ApiPublicRenderRouteImport } from './routes/api/public/render'
 import { Route as ApiPublicRenderHealthRouteImport } from './routes/api/public/render-health'
+import { Route as ApiPublicRenderDownloadIdRouteImport } from './routes/api/public/render-download.$id'
 import { Route as ApiPublicRenderStatusIdRouteImport } from './routes/api/public/render-status.$id'
 
 const IndexRoute = IndexRouteImport.update({
@@ -59,6 +60,12 @@ const ApiPublicRenderHealthRoute = ApiPublicRenderHealthRouteImport.update({
   path: '/api/public/render-health',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicRenderDownloadIdRoute =
+  ApiPublicRenderDownloadIdRouteImport.update({
+    id: '/api/public/render-download/$id',
+    path: '/api/public/render-download/$id',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicRenderStatusIdRoute = ApiPublicRenderStatusIdRouteImport.update({
   id: '/api/public/render-status/$id',
   path: '/api/public/render-status/$id',
@@ -74,6 +81,7 @@ export interface FileRoutesByFullPath {
   '/settings/rendering': typeof SettingsRenderingRoute
   '/api/public/render': typeof ApiPublicRenderRoute
   '/api/public/render-health': typeof ApiPublicRenderHealthRoute
+  '/api/public/render-download/$id': typeof ApiPublicRenderDownloadIdRoute
   '/api/public/render-status/$id': typeof ApiPublicRenderStatusIdRoute
 }
 export interface FileRoutesByTo {
@@ -85,6 +93,7 @@ export interface FileRoutesByTo {
   '/settings/rendering': typeof SettingsRenderingRoute
   '/api/public/render': typeof ApiPublicRenderRoute
   '/api/public/render-health': typeof ApiPublicRenderHealthRoute
+  '/api/public/render-download/$id': typeof ApiPublicRenderDownloadIdRoute
   '/api/public/render-status/$id': typeof ApiPublicRenderStatusIdRoute
 }
 export interface FileRoutesById {
@@ -97,6 +106,7 @@ export interface FileRoutesById {
   '/settings/rendering': typeof SettingsRenderingRoute
   '/api/public/render': typeof ApiPublicRenderRoute
   '/api/public/render-health': typeof ApiPublicRenderHealthRoute
+  '/api/public/render-download/$id': typeof ApiPublicRenderDownloadIdRoute
   '/api/public/render-status/$id': typeof ApiPublicRenderStatusIdRoute
 }
 export interface FileRouteTypes {
@@ -110,6 +120,7 @@ export interface FileRouteTypes {
     | '/settings/rendering'
     | '/api/public/render'
     | '/api/public/render-health'
+    | '/api/public/render-download/$id'
     | '/api/public/render-status/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -121,6 +132,7 @@ export interface FileRouteTypes {
     | '/settings/rendering'
     | '/api/public/render'
     | '/api/public/render-health'
+    | '/api/public/render-download/$id'
     | '/api/public/render-status/$id'
   id:
     | '__root__'
@@ -132,6 +144,7 @@ export interface FileRouteTypes {
     | '/settings/rendering'
     | '/api/public/render'
     | '/api/public/render-health'
+    | '/api/public/render-download/$id'
     | '/api/public/render-status/$id'
   fileRoutesById: FileRoutesById
 }
@@ -144,6 +157,7 @@ export interface RootRouteChildren {
   SettingsRenderingRoute: typeof SettingsRenderingRoute
   ApiPublicRenderRoute: typeof ApiPublicRenderRoute
   ApiPublicRenderHealthRoute: typeof ApiPublicRenderHealthRoute
+  ApiPublicRenderDownloadIdRoute: typeof ApiPublicRenderDownloadIdRoute
   ApiPublicRenderStatusIdRoute: typeof ApiPublicRenderStatusIdRoute
 }
 
@@ -205,6 +219,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicRenderHealthRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/render-download/$id': {
+      id: '/api/public/render-download/$id'
+      path: '/api/public/render-download/$id'
+      fullPath: '/api/public/render-download/$id'
+      preLoaderRoute: typeof ApiPublicRenderDownloadIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/render-status/$id': {
       id: '/api/public/render-status/$id'
       path: '/api/public/render-status/$id'
@@ -224,6 +245,7 @@ const rootRouteChildren: RootRouteChildren = {
   SettingsRenderingRoute: SettingsRenderingRoute,
   ApiPublicRenderRoute: ApiPublicRenderRoute,
   ApiPublicRenderHealthRoute: ApiPublicRenderHealthRoute,
+  ApiPublicRenderDownloadIdRoute: ApiPublicRenderDownloadIdRoute,
   ApiPublicRenderStatusIdRoute: ApiPublicRenderStatusIdRoute,
 }
 export const routeTree = rootRouteImport
