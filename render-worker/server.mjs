@@ -60,8 +60,13 @@ const upload = multer({
 /** jobId -> { state, progress, url, error } */
 const jobs = new Map();
 
+const PREBUILT = path.join(__dirname, "bundle");
+
 let bundlePromise = null;
 function getBundle() {
+  // Prefer the bundle baked into the image: webpack at runtime is what pushed
+  // the container over its memory limit and killed the render mid-job.
+  if (fs.existsSync(path.join(PREBUILT, "index.html"))) return Promise.resolve(PREBUILT);
   if (!bundlePromise) {
     bundlePromise = bundle({
       entryPoint: path.join(ROOT, "src/remotion/index.ts"),
@@ -77,6 +82,7 @@ function getBundle() {
   }
   return bundlePromise;
 }
+
 
 function auth(req, res) {
   if (!TOKEN) return true;

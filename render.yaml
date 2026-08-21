@@ -18,4 +18,4 @@ services:
       - key: PORT
         value: 8787
       - key: RENDER_CONCURRENCY
-        value: 2
+        value: 1
