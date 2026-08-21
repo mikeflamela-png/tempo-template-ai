@@ -19,13 +19,14 @@
  *   GET  /health        cheap liveness + readiness (never renders)
  */
 import http from "node:http";
+import net from "node:net";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
-import { execFileSync } from "node:child_process";
-import { renderMedia, selectComposition } from "@remotion/renderer";
+import { execFileSync, spawnSync } from "node:child_process";
+import { openBrowser, renderMedia, selectComposition } from "@remotion/renderer";
 import express from "express";
 import multer from "multer";
 import cors from "cors";
@@ -42,6 +43,15 @@ const TOKEN = process.env.REMOTION_WORKER_TOKEN ?? "";
 const CONCURRENCY = Number(process.env.RENDER_CONCURRENCY ?? 1) || 1;
 const BUNDLE_DIR = process.env.REMOTION_BUNDLE_DIR ?? path.join(__dirname, "bundle");
 const BROWSER = process.env.BROWSER_EXECUTABLE ?? "";
+const BUILD_ID =
+  process.env.RENDER_GIT_COMMIT ??
+  process.env.COMMIT_SHA ??
+  process.env.SOURCE_VERSION ??
+  process.env.WORKER_BUILD_ID ??
+  "local";
+const BUILD_TIME =
+  process.env.WORKER_BUILD_TIME ??
+  new Date(fs.statSync(path.join(BUNDLE_DIR, "index.html")).mtimeMs).toISOString();
 // Render.com (and most PaaS) inject the public URL for us — no manual config.
 const PUBLIC_URL =
   process.env.PUBLIC_URL ?? process.env.RENDER_EXTERNAL_URL ?? `http://localhost:${PORT}`;
@@ -64,6 +74,7 @@ function mem(tag) {
 
 console.log("Tempo render worker starting");
 console.log(`PORT=${PORT}`);
+console.log(`BUILD_ID=${BUILD_ID} BUILD_TIME=${BUILD_TIME}`);
 
 if (!fs.existsSync(path.join(BUNDLE_DIR, "index.html"))) {
   console.error(
@@ -96,6 +107,53 @@ console.log(`RENDER_CONCURRENCY=${CONCURRENCY}`);
 mem("startup");
 
 const browserOpt = BROWSER ? { browserExecutable: BROWSER } : {};
+const LOG_LEVEL = "info";
+const CHROMIUM_OPTIONS = { gl: "swangle", headless: true };
+// Remotion 4 always creates a short-lived off-thread media proxy. Giving it an
+// explicit non-default port prevents port 3000, and patch-remotion-proxy.mjs
+// binds it to 127.0.0.1 so Render sees only process.env.PORT as a public port.
+const REMOTION_PROXY_PORT = Number(process.env.REMOTION_PROXY_PORT ?? 45123);
+
+function logRemotionCall(api, details) {
+  console.log(`[remotion] ${api} inputs=${JSON.stringify(details)}`);
+}
+
+function listenerSnapshot(tag) {
+  const result = spawnSync(
+    "sh",
+    [
+      "-c",
+      "if command -v ss >/dev/null 2>&1; then ss -ltnp; elif command -v netstat >/dev/null 2>&1; then netstat -ltnp; else echo listener-tool-unavailable; fi",
+    ],
+    { encoding: "utf8", timeout: 3000 },
+  );
+  const lines = `${result.stdout ?? ""}${result.stderr ?? ""}`
+    .split("\n")
+    .filter((line) =>
+      line.includes(`:${PORT}`) ||
+      line.includes(`:${REMOTION_PROXY_PORT}`) ||
+      line.includes(":3000") ||
+      line.includes(":3001"),
+    );
+  console.log(
+    `[listeners:${tag}] workerPid=${process.pid} ${lines.length ? lines.join(" | ") : "no target listeners found"}`,
+  );
+}
+
+function checkPort(port) {
+  return new Promise((resolve) => {
+    const socket = net.createConnection({ host: "127.0.0.1", port });
+    const finish = (open) => {
+      socket.removeAllListeners();
+      socket.destroy();
+      resolve(open);
+    };
+    socket.setTimeout(500);
+    socket.once("connect", () => finish(true));
+    socket.once("timeout", () => finish(false));
+    socket.once("error", () => finish(false));
+  });
+}
 
 /* ---------------------------------------------------------------- express */
 
@@ -108,6 +166,17 @@ app.use("/assets", express.static(ASSETS));
 // of the 502s. Passing an http:// serveUrl keeps exactly one listener alive.
 app.use("/bundle", express.static(BUNDLE_DIR));
 const SERVE_URL = `http://127.0.0.1:${PORT}/bundle/index.html`;
+
+async function verifyBundleRoute() {
+  const response = await fetch(SERVE_URL, { signal: AbortSignal.timeout(5000) });
+  const body = await response.text();
+  if (!response.ok || !body.includes("<!DOCTYPE html")) {
+    throw new Error(
+      `Bundle route preflight failed: ${SERVE_URL} returned ${response.status} (${body.slice(0, 160)})`,
+    );
+  }
+  console.log(`[bundle] verified ${SERVE_URL} status=${response.status} bytes=${Buffer.byteLength(body)}`);
+}
 
 
 // Multer streams every part straight to disk — nothing is buffered in memory.
@@ -195,6 +264,8 @@ app.get("/health", (_req, res) => {
     concurrency: CONCURRENCY,
     activeJobs,
     peakRssMb: Math.round(peakRss / 1048576),
+    buildId: BUILD_ID,
+    buildTime: BUILD_TIME,
   });
 });
 
@@ -205,13 +276,39 @@ async function render({ jobId, inputProps, width, height, crf, label }) {
   activeJobs += 1;
   const outputLocation = path.join(OUT, `${jobId}.mp4`);
   const startedAt = Date.now();
+  let browser = null;
   try {
     console.log(`[${label}] render start job=${jobId} serveUrl=${SERVE_URL}`);
+    await verifyBundleRoute();
+    listenerSnapshot(`${label}-before-remotion`);
+    const port3000Before = await checkPort(3000);
+    console.log(`[listeners:${label}-before-remotion] port3000Open=${port3000Before}`);
     mem(`${label}-before-browser`);
+    console.log(
+      `[${label}] browser launch executable=${BROWSER || "remotion-default"} chromeMode=chrome-for-testing gl=swangle`,
+    );
+    browser = await openBrowser("chrome", {
+      ...browserOpt,
+      chromeMode: "chrome-for-testing",
+      chromiumOptions: CHROMIUM_OPTIONS,
+      logLevel: LOG_LEVEL,
+    });
+    console.log(`[${label}] browser launched id=${browser.id}`);
+    logRemotionCall("selectComposition", {
+      serveUrl: SERVE_URL,
+      id: "tempo",
+      browserExecutable: BROWSER || null,
+      chromeMode: "chrome-for-testing",
+      puppeteerInstance: "reused",
+    });
     const base = await selectComposition({
       serveUrl: SERVE_URL,
       id: "tempo",
       inputProps,
+      puppeteerInstance: browser,
+      chromeMode: "chrome-for-testing",
+      chromiumOptions: CHROMIUM_OPTIONS,
+      port: REMOTION_PROXY_PORT,
       ...browserOpt,
       onBrowserLog: (l) => {
         if (l.type === "error") console.error(`[${label}] browser: ${l.text}`);
@@ -224,6 +321,21 @@ async function render({ jobId, inputProps, width, height, crf, label }) {
     const composition = { ...base, width: width ?? base.width, height: height ?? base.height };
     setJob(jobId, { state: "rendering", progress: 0.02 });
     mem(`${label}-render-start`);
+    logRemotionCall("renderMedia", {
+      serveUrl: SERVE_URL,
+      compositionId: composition.id,
+      width: composition.width,
+      height: composition.height,
+      durationInFrames: composition.durationInFrames,
+      fps: composition.fps,
+      codec: "h264",
+      crf: crf ?? 18,
+      outputLocation,
+      concurrency: CONCURRENCY,
+      browserExecutable: BROWSER || null,
+      chromeMode: "chrome-for-testing",
+      puppeteerInstance: "reused",
+    });
     const ticker = setInterval(() => mem(`${label}-render-tick`), 10_000);
     try {
       await renderMedia({
@@ -234,7 +346,10 @@ async function render({ jobId, inputProps, width, height, crf, label }) {
         outputLocation,
         inputProps,
         concurrency: CONCURRENCY,
-        chromiumOptions: { gl: "swangle" },
+        puppeteerInstance: browser,
+        chromeMode: "chrome-for-testing",
+        chromiumOptions: CHROMIUM_OPTIONS,
+      port: REMOTION_PROXY_PORT,
         ...browserOpt,
         onBrowserLog: (l) => {
           if (l.type === "error") console.error(`[${label}] browser: ${l.text}`);
@@ -249,6 +364,34 @@ async function render({ jobId, inputProps, width, height, crf, label }) {
       clearInterval(ticker);
     }
     const size = fs.existsSync(outputLocation) ? fs.statSync(outputLocation).size : 0;
+    if (size <= 0) throw new Error(`Renderer produced an empty output file at ${outputLocation}`);
+    let probe;
+    try {
+      probe = JSON.parse(
+        execFileSync(
+          "ffprobe",
+          [
+            "-v",
+            "error",
+            "-show_entries",
+            "stream=codec_name,width,height:format=duration,size",
+            "-of",
+            "json",
+            outputLocation,
+          ],
+          { encoding: "utf8" },
+        ),
+      );
+    } catch (err) {
+      throw new Error(`ffprobe validation failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    const video = probe.streams?.find((stream) => stream.codec_name === "h264");
+    if (!video || Number(video.width) !== composition.width || Number(video.height) !== composition.height) {
+      throw new Error(`ffprobe found no ${composition.width}x${composition.height} H.264 stream`);
+    }
+    console.log(
+      `[${label}] ffprobe ok codec=${video.codec_name} size=${video.width}x${video.height} duration=${probe.format?.duration}s bytes=${probe.format?.size ?? size}`,
+    );
     console.log(
       `[${label}] render complete job=${jobId} ${Math.round(
         (Date.now() - startedAt) / 1000,
@@ -260,6 +403,17 @@ async function render({ jobId, inputProps, width, height, crf, label }) {
     console.error(`[${label}] render FAILED job=${jobId}`, err?.stack ?? err);
     throw err;
   } finally {
+    if (browser) {
+      try {
+        await browser.close({ silent: true });
+        console.log(`[${label}] browser closed`);
+      } catch (err) {
+        console.error(`[${label}] browser close failed`, err?.stack ?? err);
+      }
+    }
+    listenerSnapshot(`${label}-after-remotion`);
+    const port3000After = await checkPort(3000);
+    console.log(`[listeners:${label}-after-remotion] port3000Open=${port3000After}`);
     activeJobs -= 1;
     if (global.gc) global.gc();
   }
@@ -417,6 +571,7 @@ app.get("/status/:id", (req, res) => {
 });
 
 app.get("/download/:id", (req, res) => {
+  if (!auth(req, res)) return;
   const file = path.join(OUT, `${path.basename(req.params.id)}.mp4`);
   if (!fs.existsSync(file)) return res.status(404).end();
   // res.download streams the file; it is never read into memory.
@@ -431,9 +586,31 @@ process.on("unhandledRejection", (err) => {
 process.on("uncaughtException", (err) => {
   console.error("[worker] uncaughtException", err?.stack ?? err);
 });
+process.on("warning", (warning) => {
+  console.error("[worker] warning", warning.stack ?? warning.message);
+});
+process.on("beforeExit", (code) => {
+  console.error(`[worker] beforeExit code=${code} activeJobs=${activeJobs}`);
+});
+process.on("exit", (code) => {
+  console.error(`[worker] exit code=${code} activeJobs=${activeJobs}`);
+});
+let httpServer;
+for (const signal of ["SIGTERM", "SIGINT", "SIGHUP"]) {
+  process.on(signal, () => {
+    console.error(`[worker] received ${signal} pid=${process.pid} activeJobs=${activeJobs}`);
+    httpServer?.close(() => process.exit(0));
+    setTimeout(() => process.exit(1), 10_000).unref();
+  });
+}
 
 
-http.createServer(app).listen(PORT, "0.0.0.0", () => {
+httpServer = http.createServer(app);
+httpServer.on("error", (err) => {
+  console.error("[worker] HTTP server error", err?.stack ?? err);
+});
+httpServer.listen(PORT, "0.0.0.0", () => {
   console.log(`Tempo render worker listening on port ${PORT} (${PUBLIC_URL})`);
+  listenerSnapshot("startup");
   console.log("Worker ready");
 });

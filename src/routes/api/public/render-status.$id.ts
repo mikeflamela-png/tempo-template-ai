@@ -12,8 +12,13 @@ export const Route = createFileRoute("/api/public/render-status/$id")({
           { headers: token ? { authorization: `Bearer ${token}` } : {} },
         );
         if (!upstream.ok) {
+          const detail = (await upstream.text().catch(() => "")).slice(0, 500);
           return Response.json(
-            { configured: true, state: "error", error: `Status check failed (${upstream.status})` },
+            {
+              configured: true,
+              state: "error",
+              error: `Status check failed (${upstream.status})${detail ? `: ${detail}` : ""}`,
+            },
             { status: 502 },
           );
         }
