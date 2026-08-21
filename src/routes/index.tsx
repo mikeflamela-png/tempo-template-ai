@@ -678,30 +678,38 @@ function Index() {
               className="mt-6 h-14 w-full text-base font-extrabold uppercase tracking-[0.18em]"
             >
               {busy ? <Loader2 className="size-5 animate-spin" /> : <Sparkles className="size-5" />}
-              Generate Templates
+              {mode === "quick" ? "Generate 4 edits" : "Generate templates"}
             </Button>
-            <button
-              onClick={() => {
-                setPackKey(null);
-                setBlueprintId(null);
-                setMotionKey(null);
-                setCreativeSource("curated");
-                setEffectAmount(4);
-                setRisk(4);
-                generate();
-              }}
-              disabled={busy}
-              className="mt-3 w-full text-[11px] uppercase tracking-[0.2em] text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
-            >
-              Quick generate — let Tempo choose everything
-            </button>
+            {mode === "quick" ? (
+              <p className="mt-3 text-center text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
+                Tempo picks the blueprint, motion kit, type system and pacing
+              </p>
+            ) : (
+              <button
+                onClick={() => {
+                  setPackKey(null);
+                  setBlueprintId(null);
+                  setMotionKey(null);
+                  setCreativeSource("curated");
+                  setEffectAmount(4);
+                  setRisk(4);
+                  setMode("quick");
+                  generate();
+                }}
+                disabled={busy}
+                className="mt-3 w-full text-[11px] uppercase tracking-[0.2em] text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
+              >
+                Quick generate — let Tempo choose everything
+              </button>
+            )}
           </div>
         </section>
       </div>
 
       {generated.length > 0 && (
         <section id="results" className="mx-auto max-w-6xl px-6 pb-20">
-          <h2 className="display-tight mb-8 text-2xl">Generated concepts</h2>
+          <h2 className="display-tight mb-8 text-2xl">Your four edits</h2>
+
           <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-4">
             {generated.slice(0, 12).map((spec) => (
               <TemplateCard key={spec.id} spec={spec} onRegenerate={similar} onRemix={remix} />
