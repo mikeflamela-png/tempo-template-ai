@@ -386,7 +386,14 @@ function Index() {
               ] as const).map(([key, label]) => (
                 <button
                   key={key}
-                  onClick={() => setMode(key)}
+                  onClick={() => {
+                    setMode(key);
+                    if (key === "experiment") {
+                      setCreativeSource("experimental");
+                      setRisk(8);
+                      setComplexity("Experimental");
+                    }
+                  }}
                   className={`flex-1 rounded-full px-3 py-1.5 text-[11px] uppercase tracking-[0.18em] transition-colors ${
                     mode === key
                       ? "bg-foreground text-background"
