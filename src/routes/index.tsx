@@ -475,7 +475,9 @@ function Index() {
                 </div>
               </div>
 
+              {mode !== "quick" && (
               <div className="space-y-2 sm:col-span-2">
+
                 <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
                   Blueprint
                 </p>
