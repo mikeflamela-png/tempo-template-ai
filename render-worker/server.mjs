@@ -129,7 +129,10 @@ function listenerSnapshot(tag) {
   const lines = `${result.stdout ?? ""}${result.stderr ?? ""}`
     .split("\n")
     .filter((line) =>
-      line.includes(`:${PORT}`) || line.includes(":3000") || line.includes(":3001"),
+      line.includes(`:${PORT}`) ||
+      line.includes(`:${REMOTION_PROXY_PORT}`) ||
+      line.includes(":3000") ||
+      line.includes(":3001"),
     );
   console.log(
     `[listeners:${tag}] workerPid=${process.pid} ${lines.length ? lines.join(" | ") : "no target listeners found"}`,
