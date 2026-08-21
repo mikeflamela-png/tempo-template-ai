@@ -25,8 +25,7 @@ import path from "node:path";
 import os from "node:os";
 import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
-import { execFileSync, spawnSync } from "node:child_process";
-import { openBrowser, renderMedia, selectComposition } from "@remotion/renderer";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import express from "express";
 import multer from "multer";
 import cors from "cors";
@@ -69,6 +68,27 @@ function mem(tag) {
     )} external=${mb(m.external)} peakRSS=${mb(peakRss)}`,
   );
 }
+
+function cgroupMemory() {
+  const read = (f) => {
+    try {
+      return Number(fs.readFileSync(f, "utf8").trim());
+    } catch {
+      return null;
+    }
+  };
+  const used =
+    read("/sys/fs/cgroup/memory.current") ?? read("/sys/fs/cgroup/memory/memory.usage_in_bytes");
+  const limit = read("/sys/fs/cgroup/memory.max") ?? read("/sys/fs/cgroup/memory/memory.limit_in_bytes");
+  const peak = read("/sys/fs/cgroup/memory.peak");
+  return {
+    containerUsedMb: used ? Math.round(used / 1048576) : null,
+    containerPeakMb: peak ? Math.round(peak / 1048576) : null,
+    containerLimitMb: limit && limit < 1e15 ? Math.round(limit / 1048576) : null,
+    workerRssMb: Math.round(process.memoryUsage().rss / 1048576),
+  };
+}
+const START_TIME = new Date().toISOString();
 
 /* ------------------------------------------------------ startup preflight */
 
@@ -195,13 +215,16 @@ const jobs = new Map();
 let activeJobs = 0;
 
 function setJob(id, value) {
-  jobs.set(id, value);
-  if (value.state === "done" || value.state === "error") {
-    try {
-      fs.writeFileSync(path.join(STATE, `${id}.json`), JSON.stringify(value));
-    } catch {
-      /* status is best-effort */
-    }
+  const record = { ...value, jobId: id, updatedAt: new Date().toISOString() };
+  const previous = jobs.get(id);
+  record.createdAt = previous?.createdAt ?? record.updatedAt;
+  jobs.set(id, record);
+  // Every transition is mirrored to disk: a restart must never lose a job's
+  // status or the location of a finished MP4.
+  try {
+    fs.writeFileSync(path.join(STATE, `${id}.json`), JSON.stringify(record));
+  } catch (err) {
+    console.error(`[worker] could not persist job ${id}`, err?.message ?? err);
   }
 }
 function getJob(id) {
@@ -211,6 +234,33 @@ function getJob(id) {
     return JSON.parse(fs.readFileSync(path.join(STATE, `${id}.json`), "utf8"));
   } catch {
     return null;
+  }
+}
+
+// A job left mid-render belongs to a process that no longer exists.
+for (const name of fs.readdirSync(STATE)) {
+  if (!name.endsWith(".json") || name.endsWith(".cfg.json")) continue;
+  const file = path.join(STATE, name);
+  try {
+    const record = JSON.parse(fs.readFileSync(file, "utf8"));
+    if (record.state === "rendering" || record.state === "queued") {
+      const id = record.jobId ?? name.replace(/\.json$/, "");
+      const done = fs.existsSync(path.join(OUT, `${id}.mp4`));
+      const recovered = done
+        ? { ...record, state: "done", progress: 1, url: `${PUBLIC_URL}/download/${id}` }
+        : {
+            ...record,
+            state: "error",
+            error: "The render worker restarted while this export was running.",
+          };
+      fs.writeFileSync(file, JSON.stringify(recovered));
+      jobs.set(id, recovered);
+      console.log(`[worker] recovered job ${id} -> ${recovered.state}`);
+    } else {
+      jobs.set(record.jobId ?? name.replace(/\.json$/, ""), record);
+    }
+  } catch {
+    /* ignore unreadable state files */
   }
 }
 
@@ -266,6 +316,11 @@ app.get("/health", (_req, res) => {
     peakRssMb: Math.round(peakRss / 1048576),
     buildId: BUILD_ID,
     buildTime: BUILD_TIME,
+    pid: process.pid,
+    uptimeSeconds: Math.round(process.uptime()),
+    startedAt: START_TIME,
+    cpus: os.cpus().length,
+    memory: cgroupMemory(),
   });
 });
 
@@ -431,10 +486,7 @@ app.get("/test-render", async (req, res) => {
       crf: 20,
       label: "test",
     });
-    res.download(file, "tempo-test.mp4", () => {
-      cleanupFiles([file]);
-      mem("test-after-cleanup");
-    });
+    res.download(file, "tempo-test.mp4", () => mem("test-after-download"));
   } catch (err) {
     mem("test-error");
     console.error("[test-render]", err);
@@ -444,13 +496,22 @@ app.get("/test-render", async (req, res) => {
 
 app.post("/render", upload.any(), async (req, res) => {
   if (!auth(req, res)) return;
+  console.log("EXPORT_01_REQUEST_RECEIVED");
   let job;
   try {
-    job = JSON.parse(req.body.job);
+    const asField = req.body?.job;
+    const asFile = (req.files ?? []).find((f) => f.fieldname === "job");
+    job = JSON.parse(asField ?? (asFile ? fs.readFileSync(asFile.path, "utf8") : ""));
   } catch {
     cleanupFiles((req.files ?? []).map((f) => f.path));
+    console.error("EXPORT_FAILED_STAGE=EXPORT_02_JOB_VALIDATED ERROR=invalid job payload");
     return res.status(400).json({ error: "invalid job payload" });
   }
+  if (!job?.spec) {
+    cleanupFiles((req.files ?? []).map((f) => f.path));
+    return res.status(400).json({ error: "job.spec is required" });
+  }
+  console.log("EXPORT_02_JOB_VALIDATED");
 
   // map uploaded files onto the spec's media / audio references
   const byField = Object.fromEntries((req.files ?? []).map((f) => [f.fieldname, f]));
@@ -491,6 +552,7 @@ app.post("/render", upload.any(), async (req, res) => {
 
   const jobId = randomUUID();
   setJob(jobId, { state: "queued", progress: 0 });
+  console.log(`EXPORT_03_JOB_CREATED job=${jobId}`);
   res.json({ jobId });
   mem("job-accepted");
 
@@ -531,10 +593,26 @@ app.get("/status/:id", (req, res) => {
 
 app.get("/download/:id", (req, res) => {
   if (!auth(req, res)) return;
-  const file = path.join(OUT, `${path.basename(req.params.id)}.mp4`);
-  if (!fs.existsSync(file)) return res.status(404).end();
-  // res.download streams the file; it is never read into memory.
-  res.download(file, "tempo-export.mp4");
+  const id = path.basename(req.params.id);
+  const file = path.join(OUT, `${id}.mp4`);
+  console.log(`EXPORT_13_DOWNLOAD_REQUESTED job=${id}`);
+  if (!fs.existsSync(file)) {
+    console.error(`EXPORT_FAILED_STAGE=download ERROR=missing output for ${id}`);
+    return res.status(404).json({ error: "the rendered file is no longer available" });
+  }
+  const size = fs.statSync(file).size;
+  res.setHeader("content-type", "video/mp4");
+  res.setHeader("content-length", String(size));
+  res.setHeader("accept-ranges", "bytes");
+  res.setHeader("content-disposition", `attachment; filename="tempo-${id.slice(0, 8)}.mp4"`);
+  console.log(`EXPORT_14_DOWNLOAD_STREAM_STARTED job=${id} bytes=${size}`);
+  const stream = fs.createReadStream(file);
+  stream.on("error", (err) => {
+    console.error(`EXPORT_FAILED_STAGE=download ERROR=${err?.message}`);
+    res.destroy(err);
+  });
+  res.on("finish", () => console.log(`EXPORT_15_DOWNLOAD_STREAM_FINISHED job=${id} bytes=${size}`));
+  stream.pipe(res);
 });
 
 // A crashed Chromium/ffmpeg child must never take the HTTP listener down —
