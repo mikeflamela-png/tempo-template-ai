@@ -377,6 +377,61 @@ function Index() {
               placeholder={EXAMPLE}
               className="min-h-28 resize-none border-0 bg-transparent text-base shadow-none focus-visible:ring-0"
             />
+            {/* MODES — quick is the default, everything advanced lives deeper */}
+            <div className="mt-4 flex gap-1 rounded-full border border-border p-1">
+              {([
+                ["quick", "Quick"],
+                ["directed", "Directed"],
+                ["experiment", "Experiment"],
+              ] as const).map(([key, label]) => (
+                <button
+                  key={key}
+                  onClick={() => setMode(key)}
+                  className={`flex-1 rounded-full px-3 py-1.5 text-[11px] uppercase tracking-[0.18em] transition-colors ${
+                    mode === key
+                      ? "bg-foreground text-background"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {mode === "quick" && (
+              <div className="mt-5 space-y-5 border-t border-border pt-5">
+                <div className="space-y-2">
+                  <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
+                    Style
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {SIMPLE_STYLES.filter((s) => mode === "quick" ? !s.allowsExperimental : true).map((s) => (
+                      <Pill
+                        key={s.key}
+                        active={simpleStyleKey === s.key}
+                        onClick={() => setSimpleStyleKey(s.key)}
+                        title={s.blurb}
+                      >
+                        {s.name}
+                      </Pill>
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {simpleStyleByKey(simpleStyleKey)?.blurb}
+                  </p>
+                </div>
+                <Chips
+                  label="Duration"
+                  options={DURATIONS.slice(0, 5)}
+                  value={duration}
+                  onChange={setDuration}
+                  suffix="s"
+                />
+              </div>
+            )}
+
+            {mode !== "quick" && (
+            <>
             <div className="mt-4 grid gap-5 border-t border-border pt-5 sm:grid-cols-2">
               <Chips label="Platform" options={PLATFORMS} value={platform} onChange={setPlatform} />
               <Chips label="Duration" options={DURATIONS} value={duration} onChange={setDuration} suffix="s" />
