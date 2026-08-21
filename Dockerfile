@@ -17,6 +17,10 @@ RUN npm install --no-package-lock --legacy-peer-deps \
  && npm --prefix render-worker install --no-package-lock \
  && npx remotion browser ensure || true
 
+# Bundle the Remotion composition at build time. Doing it inside the running
+# service needed more memory than the container has and killed renders.
+RUN NODE_OPTIONS=--max-old-space-size=3584 node render-worker/prebundle.mjs
+
 ENV PORT=8787
 EXPOSE 8787
 CMD ["node", "render-worker/server.mjs"]
