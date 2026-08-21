@@ -49,7 +49,9 @@ const BUILD_ID =
   process.env.SOURCE_VERSION ??
   process.env.WORKER_BUILD_ID ??
   "local";
-const BUILD_TIME = process.env.WORKER_BUILD_TIME ?? "image-build-time-unavailable";
+const BUILD_TIME =
+  process.env.WORKER_BUILD_TIME ??
+  new Date(fs.statSync(path.join(BUNDLE_DIR, "index.html")).mtimeMs).toISOString();
 // Render.com (and most PaaS) inject the public URL for us — no manual config.
 const PUBLIC_URL =
   process.env.PUBLIC_URL ?? process.env.RENDER_EXTERNAL_URL ?? `http://localhost:${PORT}`;
@@ -108,9 +110,8 @@ const browserOpt = BROWSER ? { browserExecutable: BROWSER } : {};
 const LOG_LEVEL = "info";
 const CHROMIUM_OPTIONS = { gl: "swangle", headless: true };
 // Remotion 4 always creates a short-lived off-thread media proxy. Giving it an
-// explicit loopback-only port prevents the default 3000 listener that Render
-// mistakes for the public service. The public worker still has one listener:
-// process.env.PORT. This proxy exists only while a Remotion API call is active.
+// explicit non-default port prevents port 3000, and patch-remotion-proxy.mjs
+// binds it to 127.0.0.1 so Render sees only process.env.PORT as a public port.
 const REMOTION_PROXY_PORT = Number(process.env.REMOTION_PROXY_PORT ?? 45123);
 
 function logRemotionCall(api, details) {
@@ -597,6 +598,8 @@ process.on("exit", (code) => {
 for (const signal of ["SIGTERM", "SIGINT", "SIGHUP"]) {
   process.on(signal, () => {
     console.error(`[worker] received ${signal} pid=${process.pid} activeJobs=${activeJobs}`);
+    httpServer.close(() => process.exit(0));
+    setTimeout(() => process.exit(1), 10_000).unref();
   });
 }
 

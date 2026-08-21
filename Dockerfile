@@ -26,7 +26,8 @@ WORKDIR /app
 COPY . .
 
 RUN npm install --no-package-lock --legacy-peer-deps \
- && npm --prefix render-worker install --no-package-lock
+ && npm --prefix render-worker install --no-package-lock \
+ && node render-worker/patch-remotion-proxy.mjs
 
 # Bundle the Remotion composition at image build time. Webpack at runtime is
 # what pushed the container over its memory limit and killed renders.
@@ -35,6 +36,7 @@ RUN NODE_OPTIONS=--max-old-space-size=3584 node render-worker/prebundle.mjs
 # Fail the BUILD (not a production render) if anything is missing.
 RUN set -eux; \
     node -e "require('/app/render-worker/node_modules/@remotion/renderer/package.json')"; \
+    grep -F "server.listen({ port, host: '127.0.0.1' });" /app/render-worker/node_modules/@remotion/renderer/dist/serve-static.js; \
     which ffmpeg; ffmpeg -version | head -n1; \
     which ffprobe; ffprobe -version | head -n1; \
     test -x "$BROWSER_EXECUTABLE"; "$BROWSER_EXECUTABLE" --version; \
