@@ -107,6 +107,11 @@ mem("startup");
 const browserOpt = BROWSER ? { browserExecutable: BROWSER } : {};
 const LOG_LEVEL = "info";
 const CHROMIUM_OPTIONS = { gl: "swangle", headless: true };
+// Remotion 4 always creates a short-lived off-thread media proxy. Giving it an
+// explicit loopback-only port prevents the default 3000 listener that Render
+// mistakes for the public service. The public worker still has one listener:
+// process.env.PORT. This proxy exists only while a Remotion API call is active.
+const REMOTION_PROXY_PORT = Number(process.env.REMOTION_PROXY_PORT ?? 45123);
 
 function logRemotionCall(api, details) {
   console.log(`[remotion] ${api} inputs=${JSON.stringify(details)}`);
@@ -299,6 +304,7 @@ async function render({ jobId, inputProps, width, height, crf, label }) {
       puppeteerInstance: browser,
       chromeMode: "chrome-for-testing",
       chromiumOptions: CHROMIUM_OPTIONS,
+      port: REMOTION_PROXY_PORT,
       ...browserOpt,
       onBrowserLog: (l) => {
         if (l.type === "error") console.error(`[${label}] browser: ${l.text}`);
@@ -339,6 +345,7 @@ async function render({ jobId, inputProps, width, height, crf, label }) {
         puppeteerInstance: browser,
         chromeMode: "chrome-for-testing",
         chromiumOptions: CHROMIUM_OPTIONS,
+      port: REMOTION_PROXY_PORT,
         ...browserOpt,
         onBrowserLog: (l) => {
           if (l.type === "error") console.error(`[${label}] browser: ${l.text}`);
