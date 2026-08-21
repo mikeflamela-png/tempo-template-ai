@@ -102,6 +102,13 @@ const browserOpt = BROWSER ? { browserExecutable: BROWSER } : {};
 const app = express();
 app.use(cors());
 app.use("/assets", express.static(ASSETS));
+// Serve the prebuilt Remotion bundle from THIS listener. If we hand Remotion a
+// local directory it starts its own static server (default port 3000), which
+// Render detects as a second open port and then routes traffic to — the source
+// of the 502s. Passing an http:// serveUrl keeps exactly one listener alive.
+app.use("/bundle", express.static(BUNDLE_DIR));
+const SERVE_URL = `http://127.0.0.1:${PORT}/bundle/index.html`;
+
 
 // Multer streams every part straight to disk — nothing is buffered in memory.
 const upload = multer({
@@ -173,13 +180,17 @@ function auth(req, res) {
   return false;
 }
 
+// Deliberately does zero filesystem / render work: it must answer instantly
+// even while a render is saturating the single CPU.
+const BUNDLE_OK = fs.existsSync(path.join(BUNDLE_DIR, "index.html"));
+const BROWSER_OK = BROWSER ? fs.existsSync(BROWSER) : null;
 app.get("/health", (_req, res) => {
   res.json({
     ok: true,
     status: "ready",
-    bundleFound: fs.existsSync(path.join(BUNDLE_DIR, "index.html")),
+    bundleFound: BUNDLE_OK,
     bundlePath: BUNDLE_DIR,
-    browserFound: BROWSER ? fs.existsSync(BROWSER) : null,
+    browserFound: BROWSER_OK,
     browserPath: BROWSER || null,
     concurrency: CONCURRENCY,
     activeJobs,
@@ -187,19 +198,28 @@ app.get("/health", (_req, res) => {
   });
 });
 
+
 /* ------------------------------------------------------------------ render */
 
 async function render({ jobId, inputProps, width, height, crf, label }) {
   activeJobs += 1;
   const outputLocation = path.join(OUT, `${jobId}.mp4`);
+  const startedAt = Date.now();
   try {
+    console.log(`[${label}] render start job=${jobId} serveUrl=${SERVE_URL}`);
     mem(`${label}-before-browser`);
     const base = await selectComposition({
-      serveUrl: BUNDLE_DIR,
+      serveUrl: SERVE_URL,
       id: "tempo",
       inputProps,
       ...browserOpt,
+      onBrowserLog: (l) => {
+        if (l.type === "error") console.error(`[${label}] browser: ${l.text}`);
+      },
     });
+    console.log(
+      `[${label}] composition selected ${base.width}x${base.height} ${base.durationInFrames}f @${base.fps}fps`,
+    );
     mem(`${label}-after-browser`);
     const composition = { ...base, width: width ?? base.width, height: height ?? base.height };
     setJob(jobId, { state: "rendering", progress: 0.02 });
@@ -208,7 +228,7 @@ async function render({ jobId, inputProps, width, height, crf, label }) {
     try {
       await renderMedia({
         composition,
-        serveUrl: BUNDLE_DIR,
+        serveUrl: SERVE_URL,
         codec: "h264",
         crf: crf ?? 18,
         outputLocation,
@@ -216,18 +236,35 @@ async function render({ jobId, inputProps, width, height, crf, label }) {
         concurrency: CONCURRENCY,
         chromiumOptions: { gl: "swangle" },
         ...browserOpt,
-        onProgress: ({ progress }) => setJob(jobId, { state: "rendering", progress }),
+        onBrowserLog: (l) => {
+          if (l.type === "error") console.error(`[${label}] browser: ${l.text}`);
+        },
+        onStart: ({ frameCount }) => console.log(`[${label}] rendering ${frameCount} frames`),
+        onProgress: ({ progress, stitchStage }) => {
+          if (stitchStage === "muxing") console.log(`[${label}] ffmpeg muxing`);
+          setJob(jobId, { state: "rendering", progress });
+        },
       });
     } finally {
       clearInterval(ticker);
     }
+    const size = fs.existsSync(outputLocation) ? fs.statSync(outputLocation).size : 0;
+    console.log(
+      `[${label}] render complete job=${jobId} ${Math.round(
+        (Date.now() - startedAt) / 1000,
+      )}s ${Math.round(size / 1024)}KB peakRSS=${mb(peakRss)}`,
+    );
     mem(`${label}-render-complete`);
     return outputLocation;
+  } catch (err) {
+    console.error(`[${label}] render FAILED job=${jobId}`, err?.stack ?? err);
+    throw err;
   } finally {
     activeJobs -= 1;
     if (global.gc) global.gc();
   }
 }
+
 
 /**
  * Real proof-of-life: renders a 2s vertical 1080x1920 H.264 clip through the
@@ -385,6 +422,16 @@ app.get("/download/:id", (req, res) => {
   // res.download streams the file; it is never read into memory.
   res.download(file, "tempo-export.mp4");
 });
+
+// A crashed Chromium/ffmpeg child must never take the HTTP listener down —
+// the job is already marked failed by the render() catch block.
+process.on("unhandledRejection", (err) => {
+  console.error("[worker] unhandledRejection", err?.stack ?? err);
+});
+process.on("uncaughtException", (err) => {
+  console.error("[worker] uncaughtException", err?.stack ?? err);
+});
+
 
 http.createServer(app).listen(PORT, "0.0.0.0", () => {
   console.log(`Tempo render worker listening on port ${PORT} (${PUBLIC_URL})`);
