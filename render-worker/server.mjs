@@ -199,14 +199,22 @@ app.get("/health", (_req, res) => {
 async function render({ jobId, inputProps, width, height, crf, label }) {
   activeJobs += 1;
   const outputLocation = path.join(OUT, `${jobId}.mp4`);
+  const startedAt = Date.now();
   try {
+    console.log(`[${label}] render start job=${jobId} serveUrl=${SERVE_URL}`);
     mem(`${label}-before-browser`);
     const base = await selectComposition({
-      serveUrl: BUNDLE_DIR,
+      serveUrl: SERVE_URL,
       id: "tempo",
       inputProps,
       ...browserOpt,
+      onBrowserLog: (l) => {
+        if (l.type === "error") console.error(`[${label}] browser: ${l.text}`);
+      },
     });
+    console.log(
+      `[${label}] composition selected ${base.width}x${base.height} ${base.durationInFrames}f @${base.fps}fps`,
+    );
     mem(`${label}-after-browser`);
     const composition = { ...base, width: width ?? base.width, height: height ?? base.height };
     setJob(jobId, { state: "rendering", progress: 0.02 });
@@ -215,7 +223,7 @@ async function render({ jobId, inputProps, width, height, crf, label }) {
     try {
       await renderMedia({
         composition,
-        serveUrl: BUNDLE_DIR,
+        serveUrl: SERVE_URL,
         codec: "h264",
         crf: crf ?? 18,
         outputLocation,
@@ -223,18 +231,35 @@ async function render({ jobId, inputProps, width, height, crf, label }) {
         concurrency: CONCURRENCY,
         chromiumOptions: { gl: "swangle" },
         ...browserOpt,
-        onProgress: ({ progress }) => setJob(jobId, { state: "rendering", progress }),
+        onBrowserLog: (l) => {
+          if (l.type === "error") console.error(`[${label}] browser: ${l.text}`);
+        },
+        onStart: ({ frameCount }) => console.log(`[${label}] rendering ${frameCount} frames`),
+        onProgress: ({ progress, stitchStage }) => {
+          if (stitchStage === "muxing") console.log(`[${label}] ffmpeg muxing`);
+          setJob(jobId, { state: "rendering", progress });
+        },
       });
     } finally {
       clearInterval(ticker);
     }
+    const size = fs.existsSync(outputLocation) ? fs.statSync(outputLocation).size : 0;
+    console.log(
+      `[${label}] render complete job=${jobId} ${Math.round(
+        (Date.now() - startedAt) / 1000,
+      )}s ${Math.round(size / 1024)}KB peakRSS=${mb(peakRss)}`,
+    );
     mem(`${label}-render-complete`);
     return outputLocation;
+  } catch (err) {
+    console.error(`[${label}] render FAILED job=${jobId}`, err?.stack ?? err);
+    throw err;
   } finally {
     activeJobs -= 1;
     if (global.gc) global.gc();
   }
 }
+
 
 /**
  * Real proof-of-life: renders a 2s vertical 1080x1920 H.264 clip through the
