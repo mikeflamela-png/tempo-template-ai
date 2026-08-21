@@ -205,14 +205,27 @@ function Index() {
     risk,
   };
 
-  const finish = (specs: TemplateSpec[]) => {
-    const pack = stylePackByKey(packKey);
+  interface FinishConfig {
+    packKey: string | null;
+    motionKey: string | null;
+    creativeSource: CreativeSource;
+    effectAmount: number;
+  }
+
+  const finish = (specs: TemplateSpec[], cfg?: Partial<FinishConfig>) => {
+    const conf: FinishConfig = {
+      packKey: cfg?.packKey !== undefined ? cfg.packKey : packKey,
+      motionKey: cfg?.motionKey !== undefined ? cfg.motionKey : motionKey,
+      creativeSource: cfg?.creativeSource ?? creativeSource,
+      effectAmount: cfg?.effectAmount ?? effectAmount,
+    };
+    const pack = stylePackByKey(conf.packKey);
     const blueprint = blueprintById(blueprintId);
-    const motion = packByKey(motionKey);
+    const motion = packByKey(conf.motionKey);
     let out = specs.map((s) => {
       let spec = pack ? applyStylePack(s, pack) : s;
       spec = applyBlueprint(spec, blueprint);
-      spec = applyMotionPack(spec, motion, effectAmount);
+      spec = applyMotionPack(spec, motion, conf.effectAmount);
       spec = applyBrand(spec, activeBrand, activeCopy);
       if (activeBrand) {
         const systems = typeSystemsForBrand(activeBrand.id);
@@ -223,12 +236,14 @@ function Index() {
       // Restraint + contrast: decide the treatment budget and spend it on the
       // best available material (approved imports first, kernels after).
       spec = composeMotion(spec, {
-        effectAmount,
-        source: creativeSource,
+        effectAmount: conf.effectAmount,
+        source: conf.creativeSource,
         pack: motion ?? null,
         ...(activeBrand ? { brandId: activeBrand.id } : {}),
-        ...(pack ? { styleTags: [pack.key] } : {}),
+        ...(pack ? { styleTags: [pack.key], styleKey: pack.key } : {}),
       }).spec;
+      // Final simplification pass — actively removes, never adds.
+      spec = restraintPass(spec, { effectAmount: conf.effectAmount });
       return spec;
     });
     if (musicFirst && audio?.beatMap) out = out.map((s) => syncSpecToTrack(s, audio, 0.7));
@@ -243,18 +258,59 @@ function Index() {
       return (shotFit + textFit + fxFit) / 3;
     });
     // Reject weak output before it ever reaches the user.
-    out = regenerateGuard(out, {
+    const guarded = regenerateGuard(out, {
       ...(activeBrand ? { brand: activeBrand } : {}),
       ...(activeCopy ? { copy: activeCopy } : {}),
     }).map((r) => r.spec);
-    return out;
+    return guarded.length ? guarded : out;
   };
 
+  const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+
+  /**
+   * QUICK MODE — one edit per creative lane so the four results are
+   * meaningfully different, all inside the chosen style.
+   */
+  const generateQuick = () => {
+    const style = simpleStyleByKey(simpleStyleKey) ?? SIMPLE_STYLES[0]!;
+    const specs = QUICK_LANES.flatMap((lane) => {
+      const laneOpts: GenerateOptions = {
+        prompt: prompt || EXAMPLE,
+        platform,
+        duration,
+        format,
+        energy: lane.energy ?? style.energy,
+        complexity: style.complexity,
+        aesthetic: "Auto",
+        pacing: lane.pacing ?? style.pacing,
+        typography: lane.typography ?? style.typography,
+        transitionIntensity: lane.transitionIntensity ?? style.transitionIntensity,
+        layoutComplexity: lane.layoutComplexity ?? style.layoutComplexity,
+        risk: clamp(style.risk + lane.riskDelta, 1, 10),
+        styleKey: style.stylePackKey,
+      };
+      const amount = clamp(style.effectAmount + lane.effectDelta, 0, 10);
+      const base = generateTemplates(laneOpts, 1);
+      return finish(base, {
+        packKey: style.stylePackKey,
+        motionKey: style.motionPackKey,
+        creativeSource: style.creativeSource,
+        effectAmount: amount,
+      })
+        .slice(0, 1)
+        .map((s) => ({
+          ...s,
+          tags: [...new Set([...s.tags, style.name, lane.label])],
+        }));
+    });
+    addGenerated(specs);
+  };
 
   const generate = () => {
     setBusy(true);
     setTimeout(() => {
-      addGenerated(finish(generateTemplates({ ...opts, prompt: prompt || EXAMPLE }, 4)));
+      if (mode === "quick") generateQuick();
+      else addGenerated(finish(generateTemplates({ ...opts, prompt: prompt || EXAMPLE }, 4)));
       setBusy(false);
       document.getElementById("results")?.scrollIntoView({ behavior: "smooth" });
     }, 450);
@@ -269,6 +325,7 @@ function Index() {
     addGenerated(finish(remixTemplate(spec, { ...opts, prompt: prompt || EXAMPLE }, 4)));
     document.getElementById("results")?.scrollIntoView({ behavior: "smooth" });
   };
+
 
   const library = useMemo(() => {
     if (category === "All") return BASE_TEMPLATES;
