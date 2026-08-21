@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import {
   AlertTriangle,
@@ -105,6 +105,24 @@ export function ExportDialog({ spec, media, textOverrides, audio }: Props) {
   const [notConfigured, setNotConfigured] = useState(false);
   const timer = useRef<number | null>(null);
 
+  // Tell people BEFORE they hit Render whether a real MP4 is possible at all.
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch("/api/public/render-health");
+        const json = (await res.json()) as { configured?: boolean; ok?: boolean };
+        if (!cancelled) setNotConfigured(!(json.configured && json.ok));
+      } catch {
+        if (!cancelled) setNotConfigured(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
   const brand = brandById(store.activeKitId);
   const copy = copyKitById(store.activeCopyId);
 
@@ -130,7 +148,8 @@ export function ExportDialog({ spec, media, textOverrides, audio }: Props) {
   const blockingIssues = issues.filter((i) => i.level === "block");
   const warnIssues = issues.filter((i) => i.level === "warn");
   const infoIssues = issues.filter((i) => i.level === "info");
-  const canRender = blockingIssues.length === 0 && (warnIssues.length === 0 || ackWarnings);
+  const canRender =
+    !notConfigured && blockingIssues.length === 0 && (warnIssues.length === 0 || ackWarnings);
 
   const job = useCallback(
     () =>
@@ -381,7 +400,11 @@ export function ExportDialog({ spec, media, textOverrides, audio }: Props) {
             {status.stage === "idle" ? (
               <Button className="w-full font-semibold" disabled={!canRender} onClick={() => void start()}>
                 <Download className="size-4" />
-                {blockingIssues.length > 0 ? "Fix the issues above first" : "Render"}
+                {notConfigured
+                  ? "Video export is not connected"
+                  : blockingIssues.length > 0
+                    ? "Fix the issues above first"
+                    : "Render MP4"}
               </Button>
             ) : (
               <>
