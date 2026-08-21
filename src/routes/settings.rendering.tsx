@@ -117,29 +117,59 @@ function RenderingSettingsPage() {
       }
       if (!data.jobId) throw new Error(data.error ?? "The renderer rejected the test");
 
+      let transient = 0;
       const poll = async (): Promise<void> => {
-        const s = (await fetch(`/api/public/render-status/${data.jobId}`).then((r) => r.json())) as {
+        let s: {
           state?: string;
           progress?: number;
+          renderedFrames?: number;
+          totalFrames?: number;
           url?: string;
           error?: string;
-        };
+        } = {};
+        try {
+          s = await fetch(`/api/public/render-status/${data.jobId}`).then((r) => r.json());
+        } catch {
+          s = {};
+        }
+        if (!s.state) {
+          transient += 1;
+          if (transient > 40) {
+            setTest({
+              phase: "error",
+              message: "Lost contact with the render service while the test was running.",
+            });
+            return;
+          }
+          setTimeout(() => void poll(), 3000);
+          return;
+        }
+        transient = 0;
         if (s.state === "done" && s.url) {
           setConnected(true);
           setTest({ phase: "done", url: s.url });
           return;
         }
         if (s.state === "error") {
-          setConnected(false);
           setTest({ phase: "error", message: s.error ?? "The test render failed" });
           return;
         }
+        const pct = Math.round((s.progress ?? 0) * 100);
         setTest({
           phase: "running",
-          message: "Rendering the test clip…",
+          message:
+            s.state === "queued"
+              ? "Waking the renderer…"
+              : pct > 97
+                ? "Encoding and finalising…"
+                : `Rendering ${pct}%${
+                    s.renderedFrames && s.totalFrames
+                      ? ` (frame ${s.renderedFrames}/${s.totalFrames})`
+                      : ""
+                  }`,
           progress: 10 + Math.round((s.progress ?? 0) * 85),
         });
-        setTimeout(() => void poll(), 1000);
+        setTimeout(() => void poll(), 2000);
       };
       void poll();
     } catch (err) {

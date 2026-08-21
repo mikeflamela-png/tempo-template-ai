@@ -127,6 +127,9 @@ async function main() {
         chromiumOptions: CHROMIUM_OPTIONS,
         port: cfg.proxyPort,
         timeoutInMilliseconds: cfg.timeoutMs ?? 120_000,
+        // Caps Remotion's frame/video cache so a small instance cannot be
+        // pushed into an OOM kill. Does not affect output quality.
+        offthreadVideoCacheSizeInBytes: 100 * 1024 * 1024,
         ...browserOpt,
         onBrowserLog: (l) => {
           if (l.type === "error") console.error(`BROWSER_ERROR ${l.text}`);
