@@ -595,16 +595,17 @@ process.on("beforeExit", (code) => {
 process.on("exit", (code) => {
   console.error(`[worker] exit code=${code} activeJobs=${activeJobs}`);
 });
+let httpServer;
 for (const signal of ["SIGTERM", "SIGINT", "SIGHUP"]) {
   process.on(signal, () => {
     console.error(`[worker] received ${signal} pid=${process.pid} activeJobs=${activeJobs}`);
-    httpServer.close(() => process.exit(0));
+    httpServer?.close(() => process.exit(0));
     setTimeout(() => process.exit(1), 10_000).unref();
   });
 }
 
 
-const httpServer = http.createServer(app);
+httpServer = http.createServer(app);
 httpServer.on("error", (err) => {
   console.error("[worker] HTTP server error", err?.stack ?? err);
 });
