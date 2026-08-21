@@ -423,6 +423,16 @@ app.get("/download/:id", (req, res) => {
   res.download(file, "tempo-export.mp4");
 });
 
+// A crashed Chromium/ffmpeg child must never take the HTTP listener down —
+// the job is already marked failed by the render() catch block.
+process.on("unhandledRejection", (err) => {
+  console.error("[worker] unhandledRejection", err?.stack ?? err);
+});
+process.on("uncaughtException", (err) => {
+  console.error("[worker] uncaughtException", err?.stack ?? err);
+});
+
+
 http.createServer(app).listen(PORT, "0.0.0.0", () => {
   console.log(`Tempo render worker listening on port ${PORT} (${PUBLIC_URL})`);
   console.log("Worker ready");
