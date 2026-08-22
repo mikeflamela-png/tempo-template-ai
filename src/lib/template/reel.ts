@@ -29,10 +29,67 @@ const PHI = 0.6180339887498949;
  * near-identical neighbours, and long shots still get a window that fits.
  * `shuffle` re-rolls the permutation and the in-band offsets.
  */
+export interface FootageConstraints {
+  /** regions the user marked prefer / exclude / lock, in reel seconds */
+  regions?: { from: number; to: number; kind: "prefer" | "exclude" | "lock" }[];
+}
+
+/**
+ * Projects an in-point into the allowed part of the reel: excluded regions are
+ * never used, and when the user marked preferred regions the whole selection is
+ * mapped into them.
+ */
+function constrainInPoint(
+  inPoint: number,
+  clip: number,
+  reelDuration: number,
+  constraints: FootageConstraints | undefined,
+  index: number,
+): number {
+  const regions = constraints?.regions ?? [];
+  if (!regions.length) return inPoint;
+  const prefer = regions
+    .filter((r) => r.kind !== "exclude" && r.to - r.from > clip * 0.5)
+    .map((r) => ({ from: Math.max(0, r.from), to: Math.min(reelDuration, r.to) }))
+    .sort((a, b) => a.from - b.from);
+  const exclude = regions.filter((r) => r.kind === "exclude");
+
+  let allowed = prefer;
+  if (!allowed.length) {
+    // no preferred regions — the whole reel minus exclusions
+    allowed = [{ from: 0, to: reelDuration }];
+  }
+  // subtract exclusions
+  for (const ex of exclude) {
+    const next: { from: number; to: number }[] = [];
+    for (const a of allowed) {
+      if (ex.to <= a.from || ex.from >= a.to) next.push(a);
+      else {
+        if (ex.from - a.from > clip * 0.5) next.push({ from: a.from, to: ex.from });
+        if (a.to - ex.to > clip * 0.5) next.push({ from: ex.to, to: a.to });
+      }
+    }
+    allowed = next;
+  }
+  if (!allowed.length) return inPoint;
+
+  const total = allowed.reduce((sum, a) => sum + Math.max(0, a.to - a.from - clip), 0);
+  if (total <= 0) return Math.max(0, allowed[index % allowed.length]!.from);
+  // walk the allowed length using the original in-point's relative position
+  let t = ((inPoint / Math.max(0.01, reelDuration)) * total + index * 0.13 * total) % total;
+  for (const a of allowed) {
+    const span = Math.max(0, a.to - a.from - clip);
+    if (t <= span) return Number((a.from + t).toFixed(2));
+    t -= span;
+  }
+  return Math.max(0, allowed[0]!.from);
+}
+
 export function reelMediaFor(
   spec: TemplateSpec,
   reel: PreviewReel | null,
   shuffle = 0,
+  constraints?: FootageConstraints,
 ): MediaMap {
   if (!reel || !reel.duration || reel.duration <= 0.2) return {};
   const map: MediaMap = {};
@@ -63,6 +120,7 @@ export function reelMediaFor(
       if (!used.some((u) => Math.abs(u - inPoint) < minGap)) break;
       inPoint = (inPoint + bandSize * 0.41) % Math.max(0.01, usable);
     }
+    inPoint = constrainInPoint(inPoint, clip, reel.duration, constraints, i);
     used.push(inPoint);
 
     map[slot.id] = {
@@ -85,8 +143,13 @@ function gcd(a: number, b: number): number {
 
 
 /** Human readable "slot -> 3.0–3.6s" preview of the mapping. */
-export function reelSegments(spec: TemplateSpec, reel: PreviewReel | null, shuffle = 0) {
-  const map = reelMediaFor(spec, reel, shuffle);
+export function reelSegments(
+  spec: TemplateSpec,
+  reel: PreviewReel | null,
+  shuffle = 0,
+  constraints?: FootageConstraints,
+) {
+  const map = reelMediaFor(spec, reel, shuffle, constraints);
   return spec.mediaSlots.map((s) => {
     const a = map[s.id]?.inPoint ?? 0;
     return { id: s.id, label: s.label, from: a, to: Number((a + s.duration).toFixed(2)) };

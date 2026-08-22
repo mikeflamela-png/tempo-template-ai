@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AdvancedRouteImport } from './routes/advanced'
 import { Route as BrandRouteImport } from './routes/brand'
 import { Route as LibraryRouteImport } from './routes/library'
 import { Route as ProjectsRouteImport } from './routes/projects'
@@ -23,6 +24,11 @@ import { Route as ApiPublicRenderStatusIdRouteImport } from './routes/api/public
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdvancedRoute = AdvancedRouteImport.update({
+  id: '/advanced',
+  path: '/advanced',
   getParentRoute: () => rootRouteImport,
 } as any)
 const BrandRoute = BrandRouteImport.update({
@@ -74,6 +80,7 @@ const ApiPublicRenderStatusIdRoute = ApiPublicRenderStatusIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/advanced': typeof AdvancedRoute
   '/brand': typeof BrandRoute
   '/library': typeof LibraryRoute
   '/projects': typeof ProjectsRoute
@@ -86,6 +93,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/advanced': typeof AdvancedRoute
   '/brand': typeof BrandRoute
   '/library': typeof LibraryRoute
   '/projects': typeof ProjectsRoute
@@ -99,6 +107,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/advanced': typeof AdvancedRoute
   '/brand': typeof BrandRoute
   '/library': typeof LibraryRoute
   '/projects': typeof ProjectsRoute
@@ -113,6 +122,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/advanced'
     | '/brand'
     | '/library'
     | '/projects'
@@ -125,6 +135,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/advanced'
     | '/brand'
     | '/library'
     | '/projects'
@@ -137,6 +148,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/advanced'
     | '/brand'
     | '/library'
     | '/projects'
@@ -150,6 +162,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AdvancedRoute: typeof AdvancedRoute
   BrandRoute: typeof BrandRoute
   LibraryRoute: typeof LibraryRoute
   ProjectsRoute: typeof ProjectsRoute
@@ -168,6 +181,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/advanced': {
+      id: '/advanced'
+      path: '/advanced'
+      fullPath: '/advanced'
+      preLoaderRoute: typeof AdvancedRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/brand': {
@@ -238,6 +258,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AdvancedRoute: AdvancedRoute,
   BrandRoute: BrandRoute,
   LibraryRoute: LibraryRoute,
   ProjectsRoute: ProjectsRoute,

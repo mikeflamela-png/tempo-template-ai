@@ -17,6 +17,7 @@ import { toggleSaved, useTemplateStore } from "@/lib/template/store";
 import { reelMediaFor, reelSegments } from "@/lib/template/reel";
 import { fontByKey } from "@/lib/template/fonts";
 import { recordFeedback } from "@/lib/taste/profile";
+import { useRecipeStore } from "@/lib/recipe/store";
 
 export function TemplateCard({
   spec,
@@ -34,8 +35,19 @@ export function TemplateCard({
   const [feedback, setFeedback] = useState<"love" | "good" | "bad" | null>(null);
   const { saved, reel } = useTemplateStore();
   const isSaved = saved.includes(spec.id);
-  const media = useMemo(() => reelMediaFor(spec, reel), [spec, reel]);
-  const segments = useMemo(() => (reel ? reelSegments(spec, reel).slice(0, 4) : []), [spec, reel]);
+  const { recipe } = useRecipeStore();
+  const constraints = useMemo(
+    () => ({ regions: recipe.footage.value.regions }),
+    [recipe.footage.value.regions],
+  );
+  const media = useMemo(
+    () => reelMediaFor(spec, reel, 0, constraints),
+    [spec, reel, constraints],
+  );
+  const segments = useMemo(
+    () => (reel ? reelSegments(spec, reel, 0, constraints).slice(0, 4) : []),
+    [spec, reel, constraints],
+  );
   const font = fontByKey(spec.fontKey);
   const d = spec.direction;
   const description = d?.creativeIdea ?? spec.creativeProfile.family;

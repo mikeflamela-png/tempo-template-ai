@@ -38,7 +38,11 @@ import SafeAreas, { SAFE_AREAS, type Platform as SafePlatform } from "@/componen
 import { runTemplateQA } from "@/lib/template/qa";
 import FeedbackDialog from "@/components/taste/FeedbackDialog";
 import { brandById, copyKitById, useBrandStore } from "@/lib/brand/store";
-import { Heart, ThumbsDown } from "lucide-react";
+import { Heart, ThumbsDown, Redo2, Undo2 } from "lucide-react";
+import ShotEditor from "@/components/editor/ShotEditor";
+import MakeVariations from "@/components/editor/MakeVariations";
+import { useRecipeStore } from "@/lib/recipe/store";
+import type { MediaSlot } from "@/lib/template/types";
 import type {
   GraphicSlot,
   MediaAssignment,
@@ -93,6 +97,12 @@ function EditorPage() {
   const [playhead, setPlayhead] = useState(0);
   const [feedback, setFeedback] = useState<"love" | "dislike" | null>(null);
   const [safePlatform, setSafePlatform] = useState<SafePlatform | null>(null);
+  const [lockedShots, setLockedShots] = useState<string[]>([]);
+  const [history, setHistory] = useState<{ past: TemplateSpec[]; future: TemplateSpec[] }>({
+    past: [],
+    future: [],
+  });
+  const { recipe } = useRecipeStore();
   const brandStore = useBrandStore();
   const activeBrand = brandById(brandStore.activeKitId);
   const activeCopy = copyKitById(brandStore.activeCopyId);
@@ -131,9 +141,17 @@ function EditorPage() {
     if (items.length) setLibrary((prev) => [...prev, ...items]);
   }, []);
 
+  const footageConstraints = useMemo(
+    () => ({ regions: recipe.footage.value.regions }),
+    [recipe.footage.value.regions],
+  );
+
   const previewMedia: MediaMap = useMemo(
-    () => (spec ? { ...reelMediaFor(spec, reel, reelShuffle), ...media } : media),
-    [spec, reel, reelShuffle, media],
+    () =>
+      spec
+        ? { ...reelMediaFor(spec, reel, reelShuffle, footageConstraints), ...media }
+        : media,
+    [spec, reel, reelShuffle, media, footageConstraints],
   );
 
   if (!spec || !base) {
@@ -150,8 +168,33 @@ function EditorPage() {
   const graphics = spec.graphicSlots ?? [];
 
   const patchSpec = (patch: Partial<TemplateSpec>) => {
+    setHistory((h) => ({ past: [...h.past, spec].slice(-40), future: [] }));
     if (syncedSpec) setSyncedSpec({ ...syncedSpec, ...patch });
     else setEdits((prev) => ({ ...prev, ...patch }));
+  };
+
+  const undo = () => {
+    setHistory((h) => {
+      const prev = h.past[h.past.length - 1];
+      if (!prev) return h;
+      setSyncedSpec(prev);
+      return { past: h.past.slice(0, -1), future: [spec, ...h.future].slice(0, 40) };
+    });
+  };
+
+  const redo = () => {
+    setHistory((h) => {
+      const next = h.future[0];
+      if (!next) return h;
+      setSyncedSpec(next);
+      return { past: [...h.past, spec].slice(-40), future: h.future.slice(1) };
+    });
+  };
+
+  /** Direct shot manipulation: keeps total duration honest, no regeneration. */
+  const setShots = (slots: MediaSlot[]) => {
+    const duration = Number(slots.reduce((a, s) => a + s.duration, 0).toFixed(3));
+    patchSpec({ mediaSlots: slots, duration: Math.max(0.5, duration) });
   };
 
   const patchText = (slotId: string, patch: Partial<TextSlot>) =>
@@ -236,6 +279,24 @@ function EditorPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={undo}
+            disabled={history.past.length === 0}
+            aria-label="Undo"
+          >
+            <Undo2 className="size-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={redo}
+            disabled={history.future.length === 0}
+            aria-label="Redo"
+          >
+            <Redo2 className="size-4" />
+          </Button>
           <PreviewReelControl compact />
           <Button
             variant="secondary"
@@ -278,6 +339,19 @@ function EditorPage() {
               </Button>
             </div>
           </div>
+
+          <ShotEditor
+            spec={spec}
+            lockedIds={lockedShots}
+            onLock={(sid) =>
+              setLockedShots((prev) =>
+                prev.includes(sid) ? prev.filter((p) => p !== sid) : [...prev, sid],
+              )
+            }
+            onChange={setShots}
+            selected={selection?.kind === "media" ? selection.id : null}
+            onSelect={(sid) => setSelection({ kind: "media", id: sid })}
+          />
 
           <div>
             <h2 className="mb-2 text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
@@ -413,6 +487,7 @@ function EditorPage() {
             open={feedback !== null}
             onOpenChange={(o) => !o && setFeedback(null)}
           />
+          <MakeVariations spec={spec} audio={audio} />
           <VariationMatrix
             base={spec}
             media={previewMedia}
