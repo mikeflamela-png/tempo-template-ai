@@ -143,12 +143,18 @@ function RecipeBuilder() {
     if (!file) return;
     setAnalysing(true);
     try {
-      const url = URL.createObjectURL(file);
-      const analysed = await analyseAudio(file, url);
-      setAudio(analysed);
-      toast("Track analysed", {
-        description: analysed.beatMap ? `${Math.round(analysed.beatMap.bpm)} BPM` : file.name,
+      const { beatMap } = await analyseAudio(file);
+      setAudio({
+        url: URL.createObjectURL(file),
+        name: file.name,
+        duration: beatMap.duration,
+        trimStart: recipe.music.value.startAt,
+        volume: 0.8,
+        fadeIn: 0.2,
+        fadeOut: 0.5,
+        beatMap,
       });
+      toast("Track analysed", { description: `${Math.round(beatMap.bpm)} BPM` });
     } catch {
       toast("Couldn't analyse that track");
     } finally {
