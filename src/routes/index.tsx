@@ -1,757 +1,835 @@
 import { useMemo, useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
-import { ChevronDown, Loader2, Sparkles, Zap } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
-import { TemplateCard } from "@/components/TemplateCard";
-import { PreviewReelControl } from "@/components/PreviewReelControl";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { Loader2, Plus, Sparkles, Trash2, X } from "lucide-react";
+import { toast } from "sonner";
 import { AppNav } from "@/components/AppNav";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Slider } from "@/components/ui/slider";
-import { BASE_TEMPLATES } from "@/lib/template/library";
+import { PreviewReelControl } from "@/components/PreviewReelControl";
+import { TemplateCard } from "@/components/TemplateCard";
+import { Chips, Field, RecipeSection } from "@/components/recipe/RecipeSection";
 import {
-  COMPLEXITIES,
-  DURATIONS,
-  ENERGIES,
-  FORMATS,
-  PLATFORMS,
-  AESTHETICS,
-  PACINGS,
-  TYPOGRAPHY_LEVELS,
-  TRANSITION_INTENSITIES,
-  LAYOUT_COMPLEXITIES,
-  generateTemplates,
-  regenerateSimilar,
-  remixTemplate,
-  type GenerateOptions,
-} from "@/lib/template/generate";
+  SECTION_LABEL,
+  SECTION_ORDER,
+  STRUCTURES,
+  type ControlState,
+  type SectionKey,
+} from "@/lib/recipe/types";
+import {
+  patchSection,
+  patchSectionValue,
+  recordVersions,
+  resetRecipe,
+  saveRecipeAs,
+  loadRecipe,
+  deleteSavedRecipe,
+  updateRecipe,
+  useRecipeStore,
+} from "@/lib/recipe/store";
+import { generateFromRecipe, recipeSummary, tempoWillDecide } from "@/lib/recipe/compile";
 import { addGenerated, useTemplateStore } from "@/lib/template/store";
-import { STYLE_PACKS, applyStylePack, stylePackByKey } from "@/lib/template/stylepacks";
-import { syncSpecToTrack } from "@/lib/template/sync";
-import { useBrandStore, brandById, copyKitById, fontWarnings } from "@/lib/brand/store";
-import { applyBrand } from "@/lib/brand/apply";
-import { applyTypeSystems, typeSystemsForBrand } from "@/lib/brand/typesystems";
-import { appendEndCard, endCardsForBrand } from "@/lib/brand/endcards";
-import { rankByTaste } from "@/lib/taste/profile";
-import { regenerateGuard } from "@/lib/template/qa";
-import { MOTION_PACKS, packByKey, applyMotionPack } from "@/lib/motion/packs";
-import { composeMotion } from "@/lib/motion/compose";
-import { CREATIVE_SOURCES, type CreativeSource } from "@/lib/motion/assets";
-import { allBlueprints, blueprintById, applyBlueprint, useBlueprints } from "@/lib/blueprint/library";
-import { SIMPLE_STYLES, QUICK_LANES, simpleStyleByKey } from "@/lib/template/simplestyles";
-import { restraintPass } from "@/lib/template/restraint";
-import { Link } from "@tanstack/react-router";
+import { SIMPLE_STYLES } from "@/lib/template/simplestyles";
+import { FONTS } from "@/lib/template/fonts";
+import { useBrandStore } from "@/lib/brand/store";
+import { useMotionAssets } from "@/lib/motion/assets";
+import { allBlueprints } from "@/lib/blueprint/library";
+import { analyseAudio } from "@/lib/audio/beatmap";
+import { setAudio } from "@/lib/template/store";
 import type { TemplateSpec } from "@/lib/template/types";
-
-// Optional module: recommends a motion pack for a chosen style pack.
-// Imported defensively via import.meta.glob so a missing module never breaks the build.
-const styleProfileModules = import.meta.glob("/src/lib/template/styleprofiles.ts", { eager: true }) as Record<
-  string,
-  { recommendedPackFor?: (styleKey: string | null) => string | null }
->;
-const recommendedPackFor = Object.values(styleProfileModules)[0]?.recommendedPackFor;
 
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Tempo — generate short-form video editing templates" },
+      { title: "Tempo — a controlled video variation engine" },
       {
         name: "description",
         content:
-          "Describe the video you want, generate animated short-form editing templates, then drop your own clips into the slots.",
+          "Build a creative recipe — footage, structure, timing, copy, type, style, motion and music — then generate four variations that all respect your decisions.",
       },
-      { property: "og:title", content: "Tempo" },
-      { property: "og:type", content: "website" },
-      { name: "twitter:card", content: "summary_large_image" },
+      { property: "og:title", content: "Tempo — controlled video variation" },
       {
         property: "og:description",
-        content: "Generate animated short-form editing templates and swap in your own media.",
+        content:
+          "Decide what matters, let Tempo vary the rest. Four edits per recipe, all within your constraints.",
       },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
     ],
   }),
-  component: Index,
+  component: RecipeBuilder,
 });
 
-const EXAMPLE =
-  "Create a punchy 10-second footwear ad for Instagram Reels. Premium but energetic. Fast opening, interesting transitions, minimal typography, strong product ending.";
+const DURATIONS = [6, 8, 10, 15, 20, 30];
+const PACINGS = ["slow", "medium", "fast", "dynamic"] as const;
+const SHOT_LENGTHS = ["micro", "short", "medium", "long"] as const;
+const SHOT_LABELS = {
+  micro: "Micro (0.4s)",
+  short: "Short (0.8s)",
+  medium: "Medium (1.4s)",
+  long: "Long (2.4s)",
+};
+const COPY_FIELDS = [
+  ["hook", "Hook"],
+  ["headline", "Headline"],
+  ["feature", "Feature"],
+  ["support", "Support"],
+  ["offer", "Offer"],
+  ["cta", "CTA"],
+] as const;
 
-const CATEGORIES = [
-  "All",
-  "Saved",
-  "Footwear",
-  "Fashion",
-  "Outdoor",
-  "Beverage",
-  "Beauty",
-  "Product",
-  "Lifestyle",
-  "Performance Ads",
-];
+function RecipeBuilder() {
+  const { recipe, saved: savedRecipes } = useRecipeStore();
+  const { reel, audio } = useTemplateStore();
+  const { kits, copyKits } = useBrandStore();
+  const assets = useMotionAssets();
+  const blueprints = useMemo(() => allBlueprints(), []);
+  const navigate = useNavigate();
 
-function Chips<T extends string | number>({
-  label,
-  options,
-  value,
-  onChange,
-  suffix,
-}: {
-  label: string;
-  options: readonly T[];
-  value: T;
-  onChange: (v: T) => void;
-  suffix?: string;
-}) {
-  return (
-    <div className="space-y-2">
-      <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">{label}</p>
-      <div className="flex flex-wrap gap-2">
-        {options.map((o) => (
-          <button
-            key={String(o)}
-            onClick={() => onChange(o)}
-            className={`rounded-full border px-3.5 py-1.5 text-sm transition-colors ${
-              o === value
-                ? "border-primary bg-primary text-primary-foreground"
-                : "border-border text-muted-foreground hover:border-foreground/40 hover:text-foreground"
-            }`}
-          >
-            {String(o)}
-            {suffix}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function Pill({
-  active,
-  onClick,
-  title,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  title?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      {...(title ? { title } : {})}
-      className={`rounded-full border px-3.5 py-1.5 text-sm transition-colors ${
-        active
-          ? "border-primary bg-primary text-primary-foreground"
-          : "border-border text-muted-foreground hover:text-foreground"
-      }`}
-    >
-      {children}
-    </button>
-  );
-}
-
-function Index() {
-
-  const { generated, saved, audio } = useTemplateStore();
-  const [mode, setMode] = useState<"quick" | "directed" | "experiment">("quick");
-  const [simpleStyleKey, setSimpleStyleKey] = useState<string>("clean");
-  const [packKey, setPackKey] = useState<string | null>(null);
-  const [musicFirst, setMusicFirst] = useState(false);
-  const [prompt, setPrompt] = useState("");
-  const [platform, setPlatform] = useState(PLATFORMS[0]!);
-  const [duration, setDuration] = useState(10);
-  const [format, setFormat] = useState(FORMATS[0]!);
-  const [energy, setEnergy] = useState(ENERGIES[2]!);
-  const [complexity, setComplexity] = useState(COMPLEXITIES[1]!);
   const [busy, setBusy] = useState(false);
-  const [category, setCategory] = useState("All");
-  const [aesthetic, setAesthetic] = useState(AESTHETICS[0]!);
-  const [pacing, setPacing] = useState(PACINGS[1]!);
-  const [typography, setTypography] = useState(TYPOGRAPHY_LEVELS[2]!);
-  const [transitionIntensity, setTransitionIntensity] = useState(TRANSITION_INTENSITIES[2]!);
-  const [layoutComplexity, setLayoutComplexity] = useState(LAYOUT_COMPLEXITIES[1]!);
-  const [risk, setRisk] = useState(4);
-  const [showMore, setShowMore] = useState(false);
-  const brand = useBrandStore();
-  useBlueprints();
-  const [brandId, setBrandId] = useState<string | null>(null);
-  const [copyId, setCopyId] = useState<string | null>(null);
-  const [blueprintId, setBlueprintId] = useState<string | null>(null);
-  const [motionKey, setMotionKey] = useState<string | null>(null);
-  const [effectAmount, setEffectAmount] = useState(5);
-  const [creativeSource, setCreativeSource] = useState<CreativeSource>("curated");
-  const [advancedOpen, setAdvancedOpen] = useState(false);
-  const [motionAuto, setMotionAuto] = useState(true);
+  const [results, setResults] = useState<TemplateSpec[]>([]);
+  const [descriptions, setDescriptions] = useState<Record<string, string>>({});
+  const [analysing, setAnalysing] = useState(false);
 
-  useMemo(() => {
-    if (motionAuto && recommendedPackFor) {
-      const rec = recommendedPackFor(packKey);
-      if (rec !== motionKey) setMotionKey(rec);
-    }
-  }, [packKey, motionAuto]);
+  const summary = recipeSummary(recipe);
+  const decide = tempoWillDecide(recipe);
 
-  const activeBrand = brandById(brandId ?? brand.activeKitId);
-  const activeCopy = copyKitById(copyId ?? brand.activeCopyId);
-  const warnings = fontWarnings(activeBrand);
-  const blueprints = allBlueprints();
-
-  const opts: GenerateOptions = {
-    prompt,
-    platform,
-    duration,
-    format,
-    energy,
-    complexity,
-    aesthetic,
-    pacing,
-    typography,
-    transitionIntensity,
-    layoutComplexity,
-    risk,
-  };
-
-  interface FinishConfig {
-    packKey: string | null;
-    motionKey: string | null;
-    creativeSource: CreativeSource;
-    effectAmount: number;
-  }
-
-  const finish = (specs: TemplateSpec[], cfg?: Partial<FinishConfig>) => {
-    const conf: FinishConfig = {
-      packKey: cfg?.packKey !== undefined ? cfg.packKey : packKey,
-      motionKey: cfg?.motionKey !== undefined ? cfg.motionKey : motionKey,
-      creativeSource: cfg?.creativeSource ?? creativeSource,
-      effectAmount: cfg?.effectAmount ?? effectAmount,
-    };
-    const pack = stylePackByKey(conf.packKey);
-    const blueprint = blueprintById(blueprintId);
-    const motion = packByKey(conf.motionKey);
-    let out = specs.map((s) => {
-      let spec = pack ? applyStylePack(s, pack) : s;
-      spec = applyBlueprint(spec, blueprint);
-      spec = applyMotionPack(spec, motion, conf.effectAmount);
-      spec = applyBrand(spec, activeBrand, activeCopy);
-      if (activeBrand) {
-        const systems = typeSystemsForBrand(activeBrand.id);
-        if (systems.length) spec = applyTypeSystems(spec, systems);
-        const card = endCardsForBrand(activeBrand.id)[0];
-        if (card) spec = appendEndCard(spec, card, activeBrand);
-      }
-      // Restraint + contrast: decide the treatment budget and spend it on the
-      // best available material (approved imports first, kernels after).
-      spec = composeMotion(spec, {
-        effectAmount: conf.effectAmount,
-        source: conf.creativeSource,
-        pack: motion ?? null,
-        ...(activeBrand ? { brandId: activeBrand.id } : {}),
-        ...(pack ? { styleTags: [pack.key], styleKey: pack.key } : {}),
-      }).spec;
-      // Final simplification pass — actively removes, never adds.
-      spec = restraintPass(spec, { effectAmount: conf.effectAmount });
-      return spec;
-    });
-    if (musicFirst && audio?.beatMap) out = out.map((s) => syncSpecToTrack(s, audio, 0.7));
-    // Learned taste decides which of the candidates lead.
-    out = rankByTaste(out, (s, w) => {
-      const shots = s.mediaSlots.length || 1;
-      const avgShot = s.duration / shots;
-      const shotFit = 1 - Math.min(1, Math.abs(avgShot - (2.4 - w.pacing * 1.8)) / 2);
-      const textFit = 1 - Math.min(1, Math.abs(s.textSlots.length / shots - w.typographyDensity));
-      const fxFit =
-        1 - Math.min(1, Math.abs((s.creativeEvents ?? []).length / shots - w.effectDensity));
-      return (shotFit + textFit + fxFit) / 3;
-    });
-    // Reject weak output before it ever reaches the user.
-    const guarded = regenerateGuard(out, {
-      ...(activeBrand ? { brand: activeBrand } : {}),
-      ...(activeCopy ? { copy: activeCopy } : {}),
-    }).map((r) => r.spec);
-    return guarded.length ? guarded : out;
-  };
-
-  const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
-
-  /**
-   * QUICK MODE — one edit per creative lane so the four results are
-   * meaningfully different, all inside the chosen style.
-   */
-  const generateQuick = () => {
-    const style = simpleStyleByKey(simpleStyleKey) ?? SIMPLE_STYLES[0]!;
-    const specs = QUICK_LANES.flatMap((lane) => {
-      const laneOpts: GenerateOptions = {
-        prompt: prompt || EXAMPLE,
-        platform,
-        duration,
-        format,
-        energy: lane.energy ?? style.energy,
-        complexity: style.complexity,
-        aesthetic: "Auto",
-        pacing: lane.pacing ?? style.pacing,
-        typography: lane.typography ?? style.typography,
-        transitionIntensity: lane.transitionIntensity ?? style.transitionIntensity,
-        layoutComplexity: lane.layoutComplexity ?? style.layoutComplexity,
-        risk: clamp(style.risk + lane.riskDelta, 1, 10),
-        styleKey: style.stylePackKey,
-      };
-      const amount = clamp(style.effectAmount + lane.effectDelta, 0, 10);
-      const base = generateTemplates(laneOpts, 1);
-      return finish(base, {
-        packKey: style.stylePackKey,
-        motionKey: style.motionPackKey,
-        creativeSource: style.creativeSource,
-        effectAmount: amount,
-      })
-        .slice(0, 1)
-        .map((s) => ({
-          ...s,
-          tags: [...new Set([...s.tags, style.name, lane.label])],
-        }));
-    });
-    addGenerated(specs);
-  };
+  const sectionProps = (key: SectionKey, index: number, hint: string, summaryText: string) => ({
+    index,
+    title: SECTION_LABEL[key],
+    hint,
+    summary: summaryText,
+    state: recipe[key].state,
+    locked: recipe[key].locked,
+    onState: (s: ControlState) => patchSection(key, { state: s } as never),
+    onLocked: (v: boolean) => patchSection(key, { locked: v } as never),
+  });
 
   const generate = () => {
+    if (busy) return;
     setBusy(true);
     setTimeout(() => {
-      if (mode === "quick") generateQuick();
-      else addGenerated(finish(generateTemplates({ ...opts, prompt: prompt || EXAMPLE }, 4)));
-      setBusy(false);
-      document.getElementById("results")?.scrollIntoView({ behavior: "smooth" });
-    }, 450);
+      try {
+        const versions = generateFromRecipe(recipe, { audio });
+        addGenerated(versions.map((v) => v.spec));
+        recordVersions(
+          versions.map((v) => ({
+            specId: v.spec.id,
+            name: v.spec.name,
+            label: v.label,
+            description: v.description,
+            parentId: null,
+            recipeId: recipe.id,
+            seed: v.seed,
+            changed: SECTION_ORDER,
+            spec: v.spec,
+          })),
+        );
+        setResults(versions.map((v) => v.spec));
+        setDescriptions(Object.fromEntries(versions.map((v) => [v.spec.id, v.description])));
+        toast(`${versions.length} versions generated`, {
+          description: "All four respect every decision you locked in.",
+        });
+      } catch (err) {
+        toast("Generation failed", { description: (err as Error).message });
+      } finally {
+        setBusy(false);
+      }
+    }, 30);
   };
 
-  const similar = (spec: TemplateSpec) => {
-    addGenerated(finish(regenerateSimilar(spec, { ...opts, prompt: prompt || EXAMPLE }, 4)));
-    document.getElementById("results")?.scrollIntoView({ behavior: "smooth" });
+  const uploadMusic = async (file?: File | null) => {
+    if (!file) return;
+    setAnalysing(true);
+    try {
+      const url = URL.createObjectURL(file);
+      const analysed = await analyseAudio(file, url);
+      setAudio(analysed);
+      toast("Track analysed", {
+        description: analysed.beatMap ? `${Math.round(analysed.beatMap.bpm)} BPM` : file.name,
+      });
+    } catch {
+      toast("Couldn't analyse that track");
+    } finally {
+      setAnalysing(false);
+    }
   };
 
-  const remix = (spec: TemplateSpec) => {
-    addGenerated(finish(remixTemplate(spec, { ...opts, prompt: prompt || EXAMPLE }, 4)));
-    document.getElementById("results")?.scrollIntoView({ behavior: "smooth" });
-  };
-
-
-  const library = useMemo(() => {
-    if (category === "All") return BASE_TEMPLATES;
-    if (category === "Saved")
-      return [...generated, ...BASE_TEMPLATES].filter((t) => saved.includes(t.id));
-    return BASE_TEMPLATES.filter((t) => t.tags.includes(category));
-  }, [category, generated, saved]);
+  const t = recipe.timing.value;
+  const cp = recipe.copy.value;
+  const ty = recipe.type.value;
+  const mo = recipe.motion.value;
+  const mu = recipe.music.value;
+  const fi = recipe.finish.value;
 
   return (
-    <main className="min-h-screen">
-      <div className="glow-surface">
-        <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-6">
-          <span className="display-tight text-lg tracking-tight">
-            TEM<span className="text-primary">PO</span>
-          </span>
-          <div className="flex items-center gap-4">
+    <div className="min-h-screen">
+      <AppNav />
+      <main className="mx-auto max-w-3xl px-6 pb-24">
+        <header className="mb-10">
+          <p className="text-[11px] uppercase tracking-[0.3em] text-muted-foreground">
+            Creative recipe
+          </p>
+          <h1 className="display-tight mt-2 text-4xl tracking-tight">
+            Decide what matters.
+            <br />
+            <span className="text-muted-foreground">Tempo varies the rest.</span>
+          </h1>
+          <p className="mt-3 max-w-xl text-sm text-muted-foreground">
+            Everything you choose is a hard constraint. Everything left on Auto becomes a variation
+            dimension across four versions.
+          </p>
+          <div className="mt-4 flex flex-wrap items-center gap-2">
             <Link
-              to="/brand"
+              to="/advanced"
               className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground hover:text-foreground"
             >
-              Brand kit
+              Advanced generator →
             </Link>
-            <Link
-              to="/library"
-              className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground hover:text-foreground"
-            >
-              Creative library
-            </Link>
-
-            <PreviewReelControl compact />
           </div>
         </header>
 
-        <section className="mx-auto max-w-3xl px-6 pb-16 pt-10 text-center">
-          <h1 className="display-tight text-5xl sm:text-7xl">What do you want to make?</h1>
-          <p className="mx-auto mt-5 max-w-xl text-sm text-muted-foreground">
-            Describe the video. We design the edit — cuts, transitions, layouts and typography —
-            then you drop your own footage into the slots.
-          </p>
+        <Textarea
+          value={recipe.brief}
+          onChange={(e) => updateRecipe({ brief: e.target.value })}
+          rows={2}
+          placeholder="Optional brief — what is this video for? (e.g. premium running shoe, energetic but clean)"
+          className="mb-6 resize-none rounded-2xl border-border bg-card/40 text-sm"
+        />
 
-          <div className="mt-10 rounded-3xl border border-border bg-card/70 p-4 text-left backdrop-blur">
-            <Textarea
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              placeholder={EXAMPLE}
-              className="min-h-28 resize-none border-0 bg-transparent text-base shadow-none focus-visible:ring-0"
-            />
-            {/* MODES — quick is the default, everything advanced lives deeper */}
-            <div className="mt-4 flex gap-1 rounded-full border border-border p-1">
-              {([
-                ["quick", "Quick"],
-                ["directed", "Directed"],
-                ["experiment", "Experiment"],
-              ] as const).map(([key, label]) => (
-                <button
-                  key={key}
-                  onClick={() => {
-                    setMode(key);
-                    if (key === "experiment") {
-                      setCreativeSource("experimental");
-                      setRisk(8);
-                      setComplexity("Experimental");
+        <div className="space-y-3">
+          {/* 01 FOOTAGE */}
+          <RecipeSection
+            {...sectionProps(
+              "footage",
+              1,
+              "Tempo picks the strongest sections of your stringout",
+              reel
+                ? `${reel.name} · ${reel.duration.toFixed(0)}s${
+                    recipe.footage.value.regions.length
+                      ? ` · ${recipe.footage.value.regions.length} regions`
+                      : ""
+                  }`
+                : "No stringout uploaded yet",
+            )}
+            allowSurprise={false}
+            defaultOpen={!reel}
+          >
+            <PreviewReelControl />
+            <Field label="Preferred / excluded moments (seconds)">
+              <div className="space-y-2">
+                {recipe.footage.value.regions.map((r, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <select
+                      value={r.kind}
+                      onChange={(e) => {
+                        const regions = [...recipe.footage.value.regions];
+                        regions[i] = { ...r, kind: e.target.value as typeof r.kind };
+                        patchSectionValue("footage", { regions });
+                      }}
+                      className="h-9 rounded-lg border border-border bg-card px-2 text-xs"
+                    >
+                      <option value="prefer">Prefer</option>
+                      <option value="lock">Lock</option>
+                      <option value="exclude">Exclude</option>
+                    </select>
+                    {(["from", "to"] as const).map((k) => (
+                      <Input
+                        key={k}
+                        type="number"
+                        step="0.1"
+                        value={r[k]}
+                        onChange={(e) => {
+                          const regions = [...recipe.footage.value.regions];
+                          regions[i] = { ...r, [k]: Number(e.target.value) };
+                          patchSectionValue("footage", { regions });
+                        }}
+                        className="h-9 w-24 text-xs"
+                      />
+                    ))}
+                    <button
+                      onClick={() =>
+                        patchSectionValue("footage", {
+                          regions: recipe.footage.value.regions.filter((_, j) => j !== i),
+                        })
+                      }
+                      className="text-muted-foreground hover:text-foreground"
+                    >
+                      <X className="size-4" />
+                    </button>
+                  </div>
+                ))}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    patchSectionValue("footage", {
+                      regions: [
+                        ...recipe.footage.value.regions,
+                        { from: 0, to: Math.min(5, reel?.duration ?? 5), kind: "prefer" as const },
+                      ],
+                    })
+                  }
+                >
+                  <Plus className="mr-1 size-3.5" /> Add region
+                </Button>
+              </div>
+            </Field>
+          </RecipeSection>
+
+          {/* 02 STRUCTURE */}
+          <RecipeSection
+            {...sectionProps(
+              "structure",
+              2,
+              "Tempo chooses the edit structure",
+              recipe.structure.value.structureKey
+                ? STRUCTURES.find((s) => s.key === recipe.structure.value.structureKey)?.label ?? ""
+                : "Auto structure",
+            )}
+          >
+            <Field label="Structure">
+              <Chips
+                options={STRUCTURES.map((s) => s.key)}
+                value={recipe.structure.value.structureKey}
+                labels={Object.fromEntries(STRUCTURES.map((s) => [s.key, s.label]))}
+                onChange={(structureKey) => patchSectionValue("structure", { structureKey })}
+              />
+            </Field>
+            <Field label="Blueprint (optional)">
+              <select
+                value={recipe.structure.value.blueprintId ?? ""}
+                onChange={(e) =>
+                  patchSectionValue("structure", { blueprintId: e.target.value || null })
+                }
+                className="h-9 w-full rounded-lg border border-border bg-card px-2 text-xs"
+              >
+                <option value="">Let Tempo choose</option>
+                {blueprints.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </RecipeSection>
+
+          {/* 03 TIMING */}
+          <RecipeSection
+            {...sectionProps(
+              "timing",
+              3,
+              "Tempo sets pacing and shot lengths",
+              `${t.duration}s${t.pacing ? ` · ${t.pacing}` : ""}${t.shotLength ? ` · ${t.shotLength} shots` : ""}`,
+            )}
+          >
+            <Field label="Duration">
+              <Chips
+                options={DURATIONS}
+                value={t.duration}
+                suffix="s"
+                onChange={(duration) => patchSectionValue("timing", { duration })}
+              />
+            </Field>
+            <Field label="Pacing">
+              <Chips
+                options={PACINGS}
+                value={t.pacing}
+                onChange={(pacing) => patchSectionValue("timing", { pacing })}
+              />
+            </Field>
+            <Field label="Shot length">
+              <Chips
+                options={SHOT_LENGTHS}
+                value={t.shotLength}
+                labels={SHOT_LABELS}
+                onChange={(shotLength) => patchSectionValue("timing", { shotLength })}
+              />
+            </Field>
+          </RecipeSection>
+
+          {/* 04 COPY */}
+          <RecipeSection
+            {...sectionProps(
+              "copy",
+              4,
+              "Tempo writes and places the copy",
+              cp.mode === "exact"
+                ? `Exact copy · ${Object.values(cp.lines).filter(Boolean).length} lines`
+                : cp.mode === "none"
+                  ? "No copy"
+                  : "Auto copy",
+            )}
+          >
+            <Field label="Copy mode">
+              <Chips
+                options={["auto", "none", "exact", "assisted"] as const}
+                value={cp.mode}
+                labels={{
+                  auto: "Tempo writes it",
+                  none: "No copy",
+                  exact: "Exact copy (preserved)",
+                  assisted: "Assisted",
+                }}
+                onChange={(mode) => patchSectionValue("copy", { mode })}
+              />
+            </Field>
+            {cp.mode !== "none" && cp.mode !== "auto" && (
+              <div className="grid gap-2 sm:grid-cols-2">
+                {COPY_FIELDS.map(([key, label]) => (
+                  <Input
+                    key={key}
+                    value={cp.lines[key]}
+                    placeholder={label}
+                    onChange={(e) =>
+                      patchSectionValue("copy", { lines: { ...cp.lines, [key]: e.target.value } })
                     }
-                  }}
-                  className={`flex-1 rounded-full px-3 py-1.5 text-[11px] uppercase tracking-[0.18em] transition-colors ${
-                    mode === key
-                      ? "bg-foreground text-background"
-                      : "text-muted-foreground hover:text-foreground"
+                    className="h-9 text-xs"
+                  />
+                ))}
+              </div>
+            )}
+            {copyKits.length > 0 && (
+              <Field label="Copy kit">
+                <select
+                  value={recipe.copyKitId ?? ""}
+                  onChange={(e) => updateRecipe({ copyKitId: e.target.value || null })}
+                  className="h-9 w-full rounded-lg border border-border bg-card px-2 text-xs"
+                >
+                  <option value="">None</option>
+                  {copyKits.map((k) => (
+                    <option key={k.id} value={k.id}>
+                      {k.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            )}
+          </RecipeSection>
+
+          {/* 05 TYPE */}
+          <RecipeSection
+            {...sectionProps(
+              "type",
+              5,
+              "Tempo chooses the typography treatment",
+              ty.useBrandKit
+                ? "Brand kit typography"
+                : ty.fontKey
+                  ? `${FONTS.find((f) => f.key === ty.fontKey)?.name ?? ty.fontKey}${ty.uppercase ? " · uppercase" : ""}`
+                  : "Auto typography",
+            )}
+          >
+            <Field label="Source">
+              <Chips
+                options={["brand", "custom"] as const}
+                value={ty.useBrandKit ? "brand" : "custom"}
+                labels={{ brand: "Brand kit", custom: "Choose a font" }}
+                onChange={(v) => patchSectionValue("type", { useBrandKit: v === "brand" })}
+              />
+            </Field>
+            {ty.useBrandKit ? (
+              <Field label="Brand kit">
+                <select
+                  value={recipe.brandId ?? ""}
+                  onChange={(e) => updateRecipe({ brandId: e.target.value || null })}
+                  className="h-9 w-full rounded-lg border border-border bg-card px-2 text-xs"
+                >
+                  <option value="">Select a brand kit</option>
+                  {kits.map((k) => (
+                    <option key={k.id} value={k.id}>
+                      {k.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            ) : (
+              <Field label="Font">
+                <select
+                  value={ty.fontKey ?? ""}
+                  onChange={(e) => patchSectionValue("type", { fontKey: e.target.value || null })}
+                  className="h-9 w-full rounded-lg border border-border bg-card px-2 text-xs"
+                >
+                  <option value="">Let Tempo choose</option>
+                  {FONTS.map((f) => (
+                    <option key={f.key} value={f.key}>
+                      {f.name} — {f.category}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            )}
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Position">
+                <Chips
+                  options={["top", "center", "bottom"] as const}
+                  value={ty.position}
+                  onChange={(position) => patchSectionValue("type", { position })}
+                />
+              </Field>
+              <Field label="Align">
+                <Chips
+                  options={["left", "center", "right"] as const}
+                  value={ty.align}
+                  onChange={(align) => patchSectionValue("type", { align })}
+                />
+              </Field>
+            </div>
+            <Field label="Text motion">
+              <Chips
+                options={["static", "subtle", "kinetic", "aggressive"] as const}
+                value={ty.motion}
+                onChange={(motion) => patchSectionValue("type", { motion })}
+              />
+            </Field>
+            <Field label={`Size ${(ty.sizeScale ?? 1).toFixed(2)}×`}>
+              <Slider
+                min={0.6}
+                max={1.8}
+                step={0.05}
+                value={[ty.sizeScale ?? 1]}
+                onValueChange={([v]) => patchSectionValue("type", { sizeScale: v ?? 1 })}
+              />
+            </Field>
+            <label className="flex items-center gap-2 text-xs text-muted-foreground">
+              <input
+                type="checkbox"
+                checked={ty.uppercase ?? false}
+                onChange={(e) => patchSectionValue("type", { uppercase: e.target.checked })}
+              />
+              Force uppercase
+            </label>
+          </RecipeSection>
+
+          {/* 06 STYLE */}
+          <RecipeSection
+            {...sectionProps(
+              "style",
+              6,
+              "Tempo chooses the treatment",
+              SIMPLE_STYLES.find((s) => s.key === recipe.style.value.styleKey)?.name ?? "Auto style",
+            )}
+          >
+            <div className="grid gap-2 sm:grid-cols-2">
+              {SIMPLE_STYLES.map((s) => (
+                <button
+                  key={s.key}
+                  onClick={() => patchSectionValue("style", { styleKey: s.key })}
+                  className={`rounded-xl border p-3 text-left transition-colors ${
+                    recipe.style.value.styleKey === s.key
+                      ? "border-primary bg-primary/10"
+                      : "border-border hover:border-foreground/30"
                   }`}
                 >
-                  {label}
+                  <p className="text-sm">{s.name}</p>
+                  <p className="mt-0.5 text-[11px] text-muted-foreground">{s.blurb}</p>
                 </button>
               ))}
             </div>
+          </RecipeSection>
 
-            {mode === "quick" && (
-              <div className="mt-5 space-y-5 border-t border-border pt-5">
-                <div className="space-y-2">
-                  <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
-                    Style
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {SIMPLE_STYLES.filter((s) => mode === "quick" ? !s.allowsExperimental : true).map((s) => (
-                      <Pill
-                        key={s.key}
-                        active={simpleStyleKey === s.key}
-                        onClick={() => setSimpleStyleKey(s.key)}
-                        title={s.blurb}
-                      >
-                        {s.name}
-                      </Pill>
-                    ))}
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    {simpleStyleByKey(simpleStyleKey)?.blurb}
-                  </p>
-                </div>
-                <Chips
-                  label="Duration"
-                  options={DURATIONS.slice(0, 5)}
-                  value={duration}
-                  onChange={setDuration}
-                  suffix="s"
-                />
-              </div>
+          {/* 07 MOTION */}
+          <RecipeSection
+            {...sectionProps(
+              "motion",
+              7,
+              "Tempo places motion and graphics",
+              mo.assetIds.length
+                ? `${mo.assetIds.length} assets · ${mo.frequency}`
+                : "Auto motion",
             )}
-
-            {mode !== "quick" && (
-            <>
-            <div className="mt-4 grid gap-5 border-t border-border pt-5 sm:grid-cols-2">
-              <Chips label="Platform" options={PLATFORMS} value={platform} onChange={setPlatform} />
-              <Chips label="Duration" options={DURATIONS} value={duration} onChange={setDuration} suffix="s" />
-              <Chips label="Format" options={FORMATS} value={format} onChange={setFormat} />
-              <Chips label="Energy" options={ENERGIES} value={energy} onChange={setEnergy} />
-              <div className="sm:col-span-2">
-                <Chips
-                  label="Template complexity"
-                  options={COMPLEXITIES}
-                  value={complexity}
-                  onChange={setComplexity}
-                />
-              </div>
-            </div>
-            <div className="mt-5 border-t border-border pt-4">
-              <button
-                onClick={() => setShowMore((v) => !v)}
-                className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground transition-colors hover:text-foreground"
-              >
-                {showMore ? "− Hide direction controls" : "+ Direction controls"}
-              </button>
-              {showMore && (
-                <div className="mt-5 grid gap-5 sm:grid-cols-2">
-                  <div className="sm:col-span-2">
-                    <Chips label="Aesthetic" options={AESTHETICS} value={aesthetic} onChange={setAesthetic} />
-                  </div>
-                  <Chips label="Pacing" options={PACINGS} value={pacing} onChange={setPacing} />
-                  <Chips label="Typography" options={TYPOGRAPHY_LEVELS} value={typography} onChange={setTypography} />
-                  <Chips
-                    label="Transition intensity"
-                    options={TRANSITION_INTENSITIES}
-                    value={transitionIntensity}
-                    onChange={setTransitionIntensity}
-                  />
-                  <Chips
-                    label="Layout complexity"
-                    options={LAYOUT_COMPLEXITIES}
-                    value={layoutComplexity}
-                    onChange={setLayoutComplexity}
-                  />
-                  <div className="sm:col-span-2 space-y-2">
-                    <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
-                      Creative risk
-                    </p>
-                    <Slider value={[risk]} min={1} max={10} step={1} onValueChange={(v) => setRisk(v[0] ?? 4)} />
-                    <div className="flex justify-between text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-                      <span>Safe</span>
-                      <span>Weird</span>
-                    </div>
-                  </div>
+          >
+            {assets.length === 0 ? (
+              <p className="text-xs text-muted-foreground">
+                No imported motion assets yet —{" "}
+                <Link to="/library" className="underline">
+                  import some in the library
+                </Link>
+                . Tempo will use its native effects meanwhile.
+              </p>
+            ) : (
+              <Field label="Use these assets">
+                <div className="flex flex-wrap gap-2">
+                  {assets.map((a) => {
+                    const on = mo.assetIds.includes(a.id);
+                    return (
+                      <button
+                        key={a.id}
+                        onClick={() =>
+                          patchSectionValue("motion", {
+                            assetIds: on
+                              ? mo.assetIds.filter((id) => id !== a.id)
+                              : [...mo.assetIds, a.id],
+                          })
+                        }
+                        className={`rounded-full border px-3 py-1.5 text-xs ${
+                          on
+                            ? "border-primary bg-primary text-primary-foreground"
+                            : "border-border text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        {a.name}
+                      </button>
+                    );
+                  })}
                 </div>
+              </Field>
+            )}
+            <Field label="Frequency">
+              <Chips
+                options={["once", "occasionally", "often"] as const}
+                value={mo.frequency}
+                onChange={(frequency) => patchSectionValue("motion", { frequency })}
+              />
+            </Field>
+            <label className="flex items-center gap-2 text-xs text-muted-foreground">
+              <input
+                type="checkbox"
+                checked={mo.supporting}
+                onChange={(e) => patchSectionValue("motion", { supporting: e.target.checked })}
+              />
+              Tempo may add supporting effects
+            </label>
+          </RecipeSection>
+
+          {/* 08 MUSIC */}
+          <RecipeSection
+            {...sectionProps(
+              "music",
+              8,
+              "Tempo edits without a track",
+              audio ? `${audio.name} · ${mu.beatSync} sync` : "No track uploaded",
+            )}
+            allowSurprise={false}
+          >
+            <div className="flex items-center gap-3">
+              <label className="cursor-pointer rounded-lg border border-border px-3 py-2 text-xs hover:border-foreground/40">
+                {analysing ? "Analysing…" : audio ? "Replace track" : "Upload track"}
+                <input
+                  type="file"
+                  accept="audio/*"
+                  className="hidden"
+                  onChange={(e) => void uploadMusic(e.target.files?.[0])}
+                />
+              </label>
+              {audio?.beatMap && (
+                <span className="text-xs text-muted-foreground">
+                  {Math.round(audio.beatMap.bpm)} BPM · {audio.beatMap.events.length} events
+                </span>
               )}
             </div>
-            </>
-            )}
-
-
-
-            <div className="mt-5 grid gap-5 border-t border-border pt-5 sm:grid-cols-2">
-              <div className="space-y-2">
-                <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
-                  Brand kit
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  <Pill active={!activeBrand} onClick={() => setBrandId(null)}>
-                    None
-                  </Pill>
-                  {brand.kits.map((k) => (
-                    <Pill key={k.id} active={activeBrand?.id === k.id} onClick={() => setBrandId(k.id)}>
-                      {k.name}
-                    </Pill>
-                  ))}
-                  <Link
-                    to="/brand"
-                    className="rounded-full border border-dashed border-border px-3.5 py-1.5 text-sm text-muted-foreground hover:text-foreground"
-                  >
-                    + Manage
-                  </Link>
-                </div>
-                {warnings.map((w) => (
-                  <p key={w} className="text-xs text-destructive">
-                    {w}
-                  </p>
+            <Field label="Beat sync">
+              <Chips
+                options={["off", "loose", "medium", "strong"] as const}
+                value={mu.beatSync}
+                onChange={(beatSync) => patchSectionValue("music", { beatSync })}
+              />
+            </Field>
+            <Field label="Sync applies to">
+              <div className="flex flex-wrap gap-3">
+                {(
+                  [
+                    ["majorCuts", "Major cuts"],
+                    ["motionHits", "Motion hits"],
+                    ["textHits", "Text hits"],
+                    ["heroReveal", "Hero reveal"],
+                    ["ending", "Ending"],
+                  ] as const
+                ).map(([k, label]) => (
+                  <label key={k} className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <input
+                      type="checkbox"
+                      checked={mu.uses[k]}
+                      onChange={(e) =>
+                        patchSectionValue("music", { uses: { ...mu.uses, [k]: e.target.checked } })
+                      }
+                    />
+                    {label}
+                  </label>
                 ))}
               </div>
+            </Field>
+          </RecipeSection>
 
-              <div className="space-y-2">
-                <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
-                  Copy kit
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  <Pill active={!activeCopy} onClick={() => setCopyId(null)}>
-                    Placeholder copy
-                  </Pill>
-                  {brand.copyKits.map((c) => (
-                    <Pill key={c.id} active={activeCopy?.id === c.id} onClick={() => setCopyId(c.id)}>
-                      {c.name} · {c.mode}
-                    </Pill>
-                  ))}
-                </div>
-              </div>
-
-              {mode !== "quick" && (
-              <>
-              <div className="space-y-2 sm:col-span-2">
-
-                <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
-                  Blueprint
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  <Pill active={!blueprintId} onClick={() => setBlueprintId(null)}>
-                    Let Tempo decide
-                  </Pill>
-                  {blueprints.map((b) => (
-                    <Pill
-                      key={b.id}
-                      active={blueprintId === b.id}
-                      onClick={() => setBlueprintId(b.id)}
-                      title={b.blurb}
-                    >
-                      {b.name}
-                    </Pill>
-                  ))}
-                </div>
-              </div>
-
-              <div className="space-y-2 sm:col-span-2">
-                <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
-                  Motion kit
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  <Pill active={!motionKey} onClick={() => setMotionKey(null)}>
-                    Mixed
-                  </Pill>
-                  {MOTION_PACKS.map((p) => (
-                    <Pill
-                      key={p.key}
-                      active={motionKey === p.key}
-                      onClick={() => setMotionKey(p.key)}
-                      title={p.blurb}
-                    >
-                      {p.name}
-                    </Pill>
-                  ))}
-                </div>
-              </div>
-
-              <div className="space-y-2 sm:col-span-2">
-                <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
-                  Creative source
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {CREATIVE_SOURCES.map((s) => (
-                    <Pill
-                      key={s.key}
-                      active={creativeSource === s.key}
-                      onClick={() => setCreativeSource(s.key)}
-                      title={s.blurb}
-                    >
-                      {s.label}
-                    </Pill>
-                  ))}
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  {CREATIVE_SOURCES.find((s) => s.key === creativeSource)?.blurb}
-                </p>
-              </div>
-
-              <div className="space-y-2 sm:col-span-2">
-                <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
-                  Effect amount
-                </p>
+          {/* 09 FINISH */}
+          <RecipeSection
+            {...sectionProps(
+              "finish",
+              9,
+              "Tempo decides intensity and ending",
+              `Intensity ${fi.intensity} · ${fi.polish}${fi.ending ? ` · ${fi.ending.replace(/_/g, " ")}` : ""}`,
+            )}
+          >
+            {(
+              [
+                ["intensity", "Overall intensity"],
+                ["effectDensity", "Effect density"],
+                ["footagePriority", "Graphics vs footage"],
+              ] as const
+            ).map(([k, label]) => (
+              <Field key={k} label={`${label} — ${fi[k]}`}>
                 <Slider
-                  value={[effectAmount]}
                   min={0}
                   max={10}
                   step={1}
-                  onValueChange={(v) => setEffectAmount(v[0] ?? 5)}
+                  value={[fi[k]]}
+                  onValueChange={([v]) => patchSectionValue("finish", { [k]: v ?? 0 })}
                 />
-                <div className="flex justify-between text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-                  <span>Clean cuts</span>
-                  <span>Full treatment</span>
-                </div>
-              </div>
-              </>
-              )}
-            </div>
-
-
-
-            {mode !== "quick" && (
-            <div className="mt-5 space-y-2 border-t border-border pt-5">
-              <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
-                Style pack
-              </p>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  onClick={() => setPackKey(null)}
-                  className={`rounded-full border px-3.5 py-1.5 text-sm transition-colors ${
-                    packKey === null
-                      ? "border-primary bg-primary text-primary-foreground"
-                      : "border-border text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  None
-                </button>
-                {STYLE_PACKS.map((p) => (
-                  <button
-                    key={p.key}
-                    onClick={() => setPackKey(p.key)}
-                    title={p.blurb}
-                    className={`rounded-full border px-3.5 py-1.5 text-sm transition-colors ${
-                      packKey === p.key
-                        ? "border-primary bg-primary text-primary-foreground"
-                        : "border-border text-muted-foreground hover:text-foreground"
-                    }`}
-                  >
-                    {p.name}
-                  </button>
-                ))}
-              </div>
-            </div>
-            )}
-
-
-            {audio?.beatMap && (
-              <label className="mt-4 flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
-                <input
-                  type="checkbox"
-                  checked={musicFirst}
-                  onChange={(e) => setMusicFirst(e.target.checked)}
-                />
-                Build the edit around {audio.name} ({audio.beatMap.bpm} BPM)
-              </label>
-            )}
-
-            <div className="mt-5">
-              <PreviewReelControl />
-            </div>
-
-            <Button
-              onClick={generate}
-              disabled={busy}
-              className="mt-6 h-14 w-full text-base font-extrabold uppercase tracking-[0.18em]"
-            >
-              {busy ? <Loader2 className="size-5 animate-spin" /> : <Sparkles className="size-5" />}
-              {mode === "quick" ? "Generate 4 edits" : "Generate templates"}
-            </Button>
-            {mode === "quick" ? (
-              <p className="mt-3 text-center text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
-                Tempo picks the blueprint, motion kit, type system and pacing
-              </p>
-            ) : (
-              <button
-                onClick={() => {
-                  setPackKey(null);
-                  setBlueprintId(null);
-                  setMotionKey(null);
-                  setCreativeSource("curated");
-                  setEffectAmount(4);
-                  setRisk(4);
-                  setMode("quick");
-                  generate();
+              </Field>
+            ))}
+            <Field label="Polish">
+              <Chips
+                options={["clean", "textured", "raw"] as const}
+                value={fi.polish}
+                onChange={(polish) => patchSectionValue("finish", { polish })}
+              />
+            </Field>
+            <Field label="Ending">
+              <Chips
+                options={["hero_hold", "logo", "cta", "end_card", "lifestyle"] as const}
+                value={fi.ending}
+                labels={{
+                  hero_hold: "Hero hold",
+                  logo: "Logo",
+                  cta: "CTA",
+                  end_card: "End card",
+                  lifestyle: "Lifestyle fade",
                 }}
-                disabled={busy}
-                className="mt-3 w-full text-[11px] uppercase tracking-[0.2em] text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
+                onChange={(ending) => patchSectionValue("finish", { ending })}
+              />
+            </Field>
+          </RecipeSection>
+        </div>
+
+        {/* GENERATE */}
+        <div className="mt-8 rounded-2xl border border-primary/30 bg-card/60 p-5">
+          <div className="flex flex-wrap gap-2">
+            {summary.map((s) => (
+              <span
+                key={s}
+                className="rounded-full border border-primary/40 bg-primary/10 px-3 py-1 text-[11px] text-foreground"
               >
-                Quick generate — let Tempo choose everything
-              </button>
-            )}
-          </div>
-        </section>
-      </div>
-
-      {generated.length > 0 && (
-        <section id="results" className="mx-auto max-w-6xl px-6 pb-20">
-          <h2 className="display-tight mb-8 text-2xl">Your four edits</h2>
-
-          <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-4">
-            {generated.slice(0, 12).map((spec) => (
-              <TemplateCard key={spec.id} spec={spec} onRegenerate={similar} onRemix={remix} />
+                {s}
+              </span>
             ))}
           </div>
-        </section>
-      )}
+          {decide.length > 0 && (
+            <div className="mt-4">
+              <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+                Tempo will decide
+              </p>
+              <ul className="mt-2 grid gap-1 text-xs text-muted-foreground sm:grid-cols-2">
+                {decide.map((d) => (
+                  <li key={d}>· {d}</li>
+                ))}
+              </ul>
+            </div>
+          )}
 
-      <section className="mx-auto max-w-6xl px-6 pb-28">
-        <div className="mb-8 flex flex-wrap items-center gap-3">
-          <h2 className="display-tight mr-4 text-2xl">Template library</h2>
-          {CATEGORIES.map((c) => (
-            <button
-              key={c}
-              onClick={() => setCategory(c)}
-              className={`rounded-full px-3 py-1 text-xs uppercase tracking-widest transition-colors ${
-                c === category
-                  ? "bg-foreground text-background"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
+          <div className="mt-5 flex flex-wrap items-center gap-3">
+            <Chips
+              options={[2, 4, 6]}
+              value={recipe.count}
+              suffix=" versions"
+              onChange={(count) => updateRecipe({ count })}
+            />
+            <Chips
+              options={["tight", "balanced", "wild"] as const}
+              value={recipe.variation}
+              onChange={(variation) => updateRecipe({ variation })}
+            />
+            <label className="flex items-center gap-2 text-xs text-muted-foreground">
+              <input
+                type="checkbox"
+                checked={recipe.strict}
+                onChange={(e) => updateRecipe({ strict: e.target.checked })}
+              />
+              Strict recipe (nothing unselected)
+            </label>
+          </div>
+
+          <div className="mt-5 flex flex-wrap items-center gap-3">
+            <Button onClick={generate} disabled={busy} size="lg" className="rounded-full">
+              {busy ? (
+                <Loader2 className="mr-2 size-4 animate-spin" />
+              ) : (
+                <Sparkles className="mr-2 size-4" />
+              )}
+              Generate {recipe.count} versions
+            </Button>
+            <Button
+              variant="outline"
+              className="rounded-full"
+              onClick={() => {
+                const name = window.prompt("Name this recipe", recipe.name) ?? "";
+                if (name) {
+                  saveRecipeAs(name);
+                  toast("Recipe saved");
+                }
+              }}
             >
-              {c}
-            </button>
-          ))}
+              Save recipe
+            </Button>
+            <Button
+              variant="ghost"
+              className="rounded-full"
+              onClick={() => {
+                resetRecipe();
+                setResults([]);
+              }}
+            >
+              Reset
+            </Button>
+          </div>
         </div>
-        {library.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Nothing here yet.</p>
-        ) : (
-          <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-4">
-            {library.map((spec) => (
-              <TemplateCard key={spec.id} spec={spec} onRegenerate={similar} onRemix={remix} />
+
+        {savedRecipes.length > 0 && (
+          <div className="mt-6 space-y-2">
+            <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+              Saved recipes
+            </p>
+            {savedRecipes.map((r) => (
+              <div
+                key={r.id}
+                className="flex items-center justify-between rounded-xl border border-border bg-card/30 px-4 py-2"
+              >
+                <button className="text-sm hover:underline" onClick={() => loadRecipe(r.id)}>
+                  {r.name}
+                </button>
+                <button
+                  onClick={() => deleteSavedRecipe(r.id)}
+                  className="text-muted-foreground hover:text-foreground"
+                >
+                  <Trash2 className="size-3.5" />
+                </button>
+              </div>
             ))}
           </div>
         )}
-      </section>
-    </main>
+
+        {results.length > 0 && (
+          <section className="mt-12">
+            <h2 className="display-tight text-lg uppercase tracking-[0.2em]">Versions</h2>
+            <div className="mt-4 grid gap-6 sm:grid-cols-2">
+              {results.map((spec) => (
+                <div key={spec.id} className="space-y-2">
+                  <TemplateCard spec={spec} />
+                  <p className="text-xs text-muted-foreground">{descriptions[spec.id]}</p>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="rounded-full"
+                    onClick={() => void navigate({ to: "/editor/$id", params: { id: spec.id } })}
+                  >
+                    Refine this edit
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+      </main>
+    </div>
   );
 }
