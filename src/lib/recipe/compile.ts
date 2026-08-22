@@ -455,7 +455,8 @@ function blueprintFor(recipe: CreativeRecipe) {
       hints.some(
         (h) =>
           b.name.toLowerCase().includes(h) ||
-          (b.tags ?? []).some((t: string) => t.toLowerCase().includes(h)),
+          (b.bestFor ?? []).some((t: string) => t.toLowerCase().includes(h)) ||
+          b.blurb.toLowerCase().includes(h),
       ),
     ) ?? null
   );
