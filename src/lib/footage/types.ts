@@ -97,12 +97,42 @@ export interface EditVersion {
 export type EffectLevel = "none" | "light" | "medium";
 export type FormatKey = "9:16" | "16:9" | "1:1";
 
+export type LogoMode = "none" | "intro" | "outro" | "both" | "watermark";
+export type LogoPosition = "center" | "top-left" | "top-right" | "bottom-left" | "bottom-right";
+
+export interface LogoSettings {
+  mode: LogoMode;
+  position: LogoPosition;
+  scale: number;
+}
+
+export type TextStyleKey = "minimal" | "editorial" | "bold" | "caption";
+export type TextPlacement = "top" | "center" | "bottom";
+
+export interface TextSettings {
+  opening: string;
+  middle: string;
+  closing: string;
+  style: TextStyleKey;
+  placement: TextPlacement;
+  fontKey: string;
+}
+
 export interface MakeSettings {
   duration: number;
   format: FormatKey;
   styleKey: string;
   effects: EffectLevel;
   count: number;
+  logo?: LogoSettings;
+  text?: TextSettings;
+}
+
+/** An uploaded transparent logo stored in the footage blob db. */
+export interface LogoRecord {
+  id: string;
+  name: string;
+  mime: string;
 }
 
 export interface Project {
@@ -112,9 +142,11 @@ export interface Project {
   updatedAt: number;
   kind: "stringout" | "clips" | null;
   music: MusicRecord | null;
+  logo?: LogoRecord | null;
   versions: EditVersion[];
   lastSettings: MakeSettings | null;
 }
+
 
 export const FORMATS: { key: FormatKey; label: string; width: number; height: number }[] = [
   { key: "9:16", label: "9:16", width: 1080, height: 1920 },
