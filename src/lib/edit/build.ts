@@ -116,6 +116,16 @@ export function alternativesFor(
 
 /* --------------------------------------------------------- shot timing */
 
+const EVENT_RANK: Record<string, number> = {
+  drop: 5,
+  phraseChange: 4.5,
+  downbeat: 4,
+  energyShift: 3.5,
+  strongBeat: 3,
+  transient: 2,
+  minorBeat: 1,
+};
+
 function beatTimes(beatMap: BeatMap | null): number[] {
   if (!beatMap) return [];
   return beatMap.events
@@ -124,7 +134,29 @@ function beatTimes(beatMap: BeatMap | null): number[] {
     .sort((a, b) => a - b);
 }
 
-/** Cut plan: cumulative cut times across the edit, musical but not robotic. */
+/** Musically significant moments, strongest first in rank, sorted by time. */
+function cutCandidates(beatMap: BeatMap | null, minRank: number): number[] {
+  if (!beatMap) return [];
+  const seen = new Set<number>();
+  const out: number[] = [];
+  for (const e of [...beatMap.events].sort((a, b) => a.time - b.time)) {
+    if ((EVENT_RANK[e.kind] ?? 0) < minRank) continue;
+    const t = Number(e.time.toFixed(3));
+    if (seen.has(t)) continue;
+    seen.add(t);
+    out.push(t);
+  }
+  return out;
+}
+
+/**
+ * CUT PLAN — the music leads.
+ *
+ * When a track exists, cuts land ON detected beats/transients: we walk the
+ * musical grid and take the event closest to the style's target shot length,
+ * so pacing still differs per style but every cut is on the music. Without
+ * music we fall back to the styled pacing curve.
+ */
 export function planCuts(
   recipe: EditRecipe,
   total: number,
@@ -132,55 +164,69 @@ export function planCuts(
   rand: () => number,
 ): number[] {
   const base = recipe.avgShot;
-  const n = Math.max(3, Math.round(total / base));
-  const raw: number[] = [];
-  for (let i = 0; i < n; i++) {
-    const p = n === 1 ? 0 : i / (n - 1);
-    // accelerate: earlier shots longer, later shots shorter
-    const ramp = 1 + recipe.accelerate * (0.45 - p * 0.9);
-    const jitter = 0.82 + rand() * 0.36;
-    raw.push(base * ramp * jitter);
-  }
-  raw[n - 1] = (raw[n - 1] ?? base) * recipe.endingHold;
-  const sum = raw.reduce((a, b) => a + b, 0);
-  const scaled = raw.map((d) => (d / sum) * total);
 
-  // convert to boundaries, then snap a proportion of them to musical events
-  const beats = beatTimes(beatMap);
-  const bounds: number[] = [];
-  let t = 0;
-  for (let i = 0; i < scaled.length - 1; i++) {
-    t += scaled[i]!;
-    bounds.push(t);
-  }
-  if (beats.length && recipe.beatSync > 0.05) {
-    const tol = 0.18 + recipe.beatSync * 0.32;
-    for (let i = 0; i < bounds.length; i++) {
-      if (rand() > recipe.beatSync) continue; // some cuts intentionally breathe
-      const b = bounds[i]!;
-      let best = b;
-      let bestD = Infinity;
-      for (const beat of beats) {
-        const d = Math.abs(beat - b);
-        if (d < bestD) {
-          bestD = d;
-          best = beat;
+  const target = (i: number, n: number) => {
+    const p = n <= 1 ? 0 : i / (n - 1);
+    return base * (1 + recipe.accelerate * (0.45 - p * 0.9));
+  };
+
+  // ---- musical path ------------------------------------------------------
+  if (beatMap && recipe.beatSync > 0.05) {
+    // relax the significance floor until we have enough places to cut
+    let events: number[] = [];
+    for (const rank of [4, 3, 2, 1]) {
+      events = cutCandidates(beatMap, rank).filter((t) => t > 0.2 && t < total - 0.25);
+      if (events.length >= Math.max(3, total / base / 1.4)) break;
+    }
+    if (events.length >= 3) {
+      const n = Math.max(3, Math.round(total / base));
+      const bounds: number[] = [];
+      let cursor = 0;
+      let i = 0;
+      while (cursor < total - base * 0.6 && bounds.length < n * 2) {
+        const want = cursor + target(i, n) * (0.9 + rand() * 0.2);
+        let best = -1;
+        let bestD = Infinity;
+        for (const e of events) {
+          if (e <= cursor + Math.max(0.28, base * 0.4)) continue;
+          const d = Math.abs(e - want);
+          if (d < bestD) {
+            bestD = d;
+            best = e;
+          }
         }
+        if (best < 0 || best >= total - 0.25) break;
+        bounds.push(best);
+        cursor = best;
+        i++;
       }
-      if (bestD <= tol) bounds[i] = best;
+      if (bounds.length >= 2) {
+        const durations: number[] = [];
+        let prev = 0;
+        for (const b of bounds) {
+          durations.push(Number((b - prev).toFixed(3)));
+          prev = b;
+        }
+        const tail = Number((total - prev).toFixed(3));
+        if (tail < 0.3 && durations.length) {
+          durations[durations.length - 1] = Number(
+            (durations[durations.length - 1]! + tail).toFixed(3),
+          );
+        } else durations.push(tail);
+        return durations;
+      }
     }
   }
 
-  // rebuild durations, enforcing a floor
-  const durations: number[] = [];
-  let prev = 0;
-  for (const b of bounds) {
-    durations.push(Math.max(0.28, Number((b - prev).toFixed(3))));
-    prev = prev + durations[durations.length - 1]!;
-  }
-  durations.push(Math.max(0.3, Number((total - prev).toFixed(3))));
-  return durations;
+  // ---- no music: styled pacing curve -------------------------------------
+  const n = Math.max(3, Math.round(total / base));
+  const raw: number[] = [];
+  for (let i = 0; i < n; i++) raw.push(target(i, n) * (0.85 + rand() * 0.3));
+  raw[n - 1] = (raw[n - 1] ?? base) * recipe.endingHold;
+  const sum = raw.reduce((a, b) => a + b, 0);
+  return raw.map((d) => Number(((d / sum) * total).toFixed(3)));
 }
+
 
 /* ------------------------------------------------------------- building */
 
