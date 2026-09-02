@@ -48,6 +48,10 @@ export interface ScoreContext {
   used: Record<string, number>;
   previousClipId?: string | undefined;
   previousSourceId?: string | undefined;
+  /** scene we're currently inside — clips from it are strongly preferred */
+  sceneId?: string | null | undefined;
+  /** scenes already used, so a new scene is fresh rather than a repeat */
+  usedScenes?: Record<string, number> | undefined;
 }
 
 /** Deterministic weighted score. Rejected clips are impossible to select. */
@@ -58,6 +62,15 @@ export function scoreClip(clip: Clip, ctx: ScoreContext): number {
 
   if (ctx.wantType && clip.shotType) {
     score *= clip.shotType === ctx.wantType ? 2.4 : 0.8;
+  }
+
+  // scene continuity: staying inside a scene reads as a deliberate sequence
+  if (ctx.sceneId) {
+    if (clip.sceneId === ctx.sceneId) score *= 3.2;
+    else score *= 0.55;
+  } else if (clip.sceneId && ctx.usedScenes) {
+    const seen = ctx.usedScenes[clip.sceneId] ?? 0;
+    if (seen > 0) score *= 0.7 ** Math.min(seen, 4);
   }
 
   const usable = clipLength(clip);
@@ -71,6 +84,7 @@ export function scoreClip(clip: Clip, ctx: ScoreContext): number {
 
   return score;
 }
+
 
 function weightedPick(clips: Clip[], ctx: ScoreContext, rand: () => number): Clip | null {
   const scored = clips.map((c) => ({ c, s: scoreClip(c, ctx) })).filter((x) => x.s > 0);
