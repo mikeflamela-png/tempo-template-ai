@@ -186,10 +186,11 @@ export async function detectCuts(url: string, opts: DetectOptions = {}): Promise
   if (!deltas.length) return { cuts: [], duration };
 
   const values = deltas.map((x) => x.d);
-  const mean = values.reduce((a, b) => a + b, 0) / values.length;
-  const sd = Math.sqrt(values.reduce((a, b) => a + (b - mean) ** 2, 0) / values.length);
-  // sensitivity 0 -> 4 sigma, 1 -> 1.2 sigma
-  const threshold = Math.max(0.045, mean + sd * (4 - sensitivity * 2.8));
+  // Robust statistics: the cuts themselves would inflate a mean/σ threshold.
+  const med = median(values);
+  const mad = median(values.map((v) => Math.abs(v - med))) || 0.004;
+  // sensitivity 0 -> 10 MAD, 1 -> 2 MAD
+  const threshold = Math.max(0.03, med + mad * (10 - sensitivity * 8));
 
   const cuts: number[] = [];
   let lastCut = 0;
