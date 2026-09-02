@@ -152,12 +152,71 @@ export function deleteProject(id: string) {
     projects: state.projects.filter((p) => p.id !== id),
     sources: state.sources.filter((s) => s.projectId !== id),
     clips: state.clips.filter((c) => c.projectId !== id),
+    scenes: state.scenes.filter((s) => s.projectId !== id),
   });
 }
 
 export function projectById(id: string) {
   return state.projects.find((p) => p.id === id) ?? null;
 }
+
+export function setLogo(projectId: string, logo: LogoRecord | null) {
+  updateProject(projectId, { logo });
+}
+
+/* ------------------------------------------------------------------- scenes */
+
+export function projectScenes(projectId: string): Scene[] {
+  return state.scenes.filter((s) => s.projectId === projectId);
+}
+
+export function sceneById(id: string | null | undefined) {
+  return id ? (state.scenes.find((s) => s.id === id) ?? null) : null;
+}
+
+/** Group clips into a new scene. Naming is optional. */
+export function groupAsScene(projectId: string, clipIds: string[], name?: string): Scene {
+  const index = projectScenes(projectId).length + 1;
+  const scene: Scene = {
+    id: `sc-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+    projectId,
+    name: (name ?? "").trim() || `Scene ${index}`,
+    createdAt: Date.now(),
+  };
+  const set = new Set(clipIds);
+  commit({
+    ...state,
+    scenes: [...state.scenes, scene],
+    clips: state.clips.map((c) => (set.has(c.id) ? { ...c, sceneId: scene.id } : c)),
+  });
+  return scene;
+}
+
+export function addToScene(sceneId: string, clipIds: string[]) {
+  const set = new Set(clipIds);
+  commit({ ...state, clips: state.clips.map((c) => (set.has(c.id) ? { ...c, sceneId } : c)) });
+}
+
+export function removeFromScene(clipIds: string[]) {
+  const set = new Set(clipIds);
+  commit({ ...state, clips: state.clips.map((c) => (set.has(c.id) ? { ...c, sceneId: null } : c)) });
+}
+
+export function renameScene(sceneId: string, name: string) {
+  commit({
+    ...state,
+    scenes: state.scenes.map((s) => (s.id === sceneId ? { ...s, name: name.trim() || s.name } : s)),
+  });
+}
+
+export function ungroupScene(sceneId: string) {
+  commit({
+    ...state,
+    scenes: state.scenes.filter((s) => s.id !== sceneId),
+    clips: state.clips.map((c) => (c.sceneId === sceneId ? { ...c, sceneId: null } : c)),
+  });
+}
+
 
 /* -------------------------------------------------------------------- media */
 
