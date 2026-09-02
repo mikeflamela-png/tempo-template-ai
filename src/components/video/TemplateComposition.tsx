@@ -1246,7 +1246,9 @@ export const TemplateVideo: React.FC<TemplateVideoProps> = ({
         fps={spec.fps}
         assetUrls={assetUrls}
       />
+      <LogoLayer spec={spec} media={media} />
     </AbsoluteFill>
+
 
   );
 
