@@ -3,17 +3,19 @@ import { getMedia, putMedia, deleteMedia } from "./db";
 import type {
   Clip,
   EditVersion,
+  LogoRecord,
   MakeSettings,
   MusicRecord,
   Project,
+  Scene,
   ShotType,
   SourceRecord,
 } from "./types";
 
 /**
- * Project memory. Ratings, favorites, rejects, shot types, trims, music and
- * generated versions all survive a reload. Persisted in IndexedDB (thumbnails
- * would blow the localStorage quota).
+ * Project memory. Ratings, favorites, rejects, shot types, trims, scene groups,
+ * music and generated versions all survive a reload. Persisted in IndexedDB
+ * (thumbnails would blow the localStorage quota).
  */
 const STATE_KEY = "tempo-selects-state:v1";
 
@@ -21,14 +23,16 @@ interface State {
   projects: Project[];
   sources: SourceRecord[];
   clips: Clip[];
+  scenes: Scene[];
   ready: boolean;
 }
 
-const empty: State = { projects: [], sources: [], clips: [], ready: false };
+const empty: State = { projects: [], sources: [], clips: [], scenes: [], ready: false };
 let state: State = empty;
 const listeners = new Set<() => void>();
 let hydrating = false;
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
+
 
 function emit() {
   listeners.forEach((l) => l());
