@@ -280,12 +280,19 @@ export interface BuildResult {
   offsets: Record<string, number>;
 }
 
+export interface BuildOptions {
+  scenes?: Scene[];
+  /** media map key that will hold the uploaded logo image */
+  logoKey?: string | null;
+}
+
 export function buildEdit(
   clips: Clip[],
   settings: MakeSettings,
   beatMap: BeatMap | null,
   seed: number,
   name: string,
+  opts: BuildOptions = {},
 ): BuildResult {
   const recipe = recipeByKey(settings.styleKey);
   const style = simpleStyleFor(recipe);
@@ -295,6 +302,7 @@ export function buildEdit(
 
   const pool = clips.filter((c) => !c.rejected);
   const used: Record<string, number> = {};
+  const usedScenes: Record<string, number> = {};
   const slots: MediaSlot[] = [];
   const plan: Record<string, string> = {};
   const offsets: Record<string, number> = {};
@@ -302,18 +310,33 @@ export function buildEdit(
   // every version rotates the shot-type sequence so openings differ
   const rotate = Math.floor(rand() * recipe.sequence.length);
 
+  // scene continuity: stay inside a scene for a short run of shots, then move on
+  const runTarget = () => Math.max(1, Math.round(recipe.sceneRun * (0.7 + rand() * 0.8)));
+  let sceneId: string | null = null;
+  let runLeft = 0;
+
   let t = 0;
   let prevClip: Clip | null = null;
   durations.forEach((duration, i) => {
     const wantType = recipe.sequence[(i + rotate) % recipe.sequence.length] ?? null;
+    if (runLeft <= 0) sceneId = null;
     const ctx: ScoreContext = {
       need: duration,
       wantType,
       used,
       previousClipId: prevClip?.id,
       previousSourceId: prevClip?.sourceId,
+      sceneId,
+      usedScenes,
     };
-    const clip = weightedPick(pool, ctx, rand) ?? pool[i % Math.max(1, pool.length)] ?? null;
+    let clip = weightedPick(pool, ctx, rand);
+    if (!clip && sceneId) {
+      // scene exhausted — allow the edit to move on
+      sceneId = null;
+      runLeft = 0;
+      clip = weightedPick(pool, { ...ctx, sceneId: null }, rand);
+    }
+    clip = clip ?? pool[i % Math.max(1, pool.length)] ?? null;
     const id = `shot-${i + 1}`;
     const layout =
       i > 0 && i < durations.length - 1 && rand() < recipe.layoutChance
@@ -327,9 +350,9 @@ export function buildEdit(
       duration: Number(duration.toFixed(3)),
       purpose: clip?.shotType ? PURPOSE_BY_TYPE[clip.shotType] : wantType ? PURPOSE_BY_TYPE[wantType] : "detail",
       layout,
-      animationIn: rand() < 0.55 ? IN_ANIMATIONS[Math.floor(rand() * IN_ANIMATIONS.length)]! : "none",
-      transitionOut:
-        (recipe.transitions[Math.floor(rand() * recipe.transitions.length)] as Transition) ?? "hard_cut",
+      // CLEAN CUTS ONLY — no entrance motion, no generated transition
+      animationIn: "none",
+      transitionOut: "hard_cut",
     });
 
     if (clip) {
@@ -337,6 +360,17 @@ export function buildEdit(
       plan[id] = clip.id;
       offsets[id] = pickOffset(clip, duration, rand);
       prevClip = clip;
+      if (clip.sceneId) {
+        if (clip.sceneId === sceneId) runLeft -= 1;
+        else {
+          sceneId = clip.sceneId;
+          runLeft = runTarget() - 1;
+        }
+        usedScenes[clip.sceneId] = (usedScenes[clip.sceneId] ?? 0) + 1;
+      } else {
+        sceneId = null;
+        runLeft = 0;
+      }
     }
     t += duration;
   });
@@ -352,7 +386,7 @@ export function buildEdit(
     tags: [recipe.key, settings.format],
     palette: { bg: "#0a0a0a", ink: "#f5f5f0", accent: "#e7e2d6" },
     mediaSlots: slots,
-    textSlots: [],
+    textSlots: textSlotsFor(settings.text, total, beatMap),
     overlays: overlaysFor(recipe, settings.effects, total, rand),
     beatMarkers: beatTimes(beatMap).filter((b) => b < total),
     creativeProfile: {
@@ -360,14 +394,99 @@ export function buildEdit(
       energy: style.energy,
       pacing: style.pacing,
       typography: style.typography,
-      transitionStyle: style.transitionIntensity,
+      transitionStyle: "hard cuts only",
       structure: recipe.sequence.join(" → "),
     },
-    fontKey: style.stylePackKey,
+    fontKey: settings.text?.fontKey || style.stylePackKey,
   };
+
+  const logo = logoSpecFor(settings, total, opts.logoKey ?? null);
+  if (logo) spec.logo = logo;
 
   return { spec, plan, offsets };
 }
+
+/* ----------------------------------------------------------------- text */
+
+const TEXT_STYLE: Record<string, TextSlot["style"]> = {
+  minimal: "minimal_caption",
+  editorial: "centered_statement",
+  bold: "oversized_hook",
+  caption: "subtitle",
+};
+
+/** Snap a time to the nearest strong musical moment, when there is music. */
+function snapToMusic(time: number, beatMap: BeatMap | null, total: number) {
+  if (!beatMap) return time;
+  const events = cutCandidates(beatMap, 3.5).filter((t) => t > 0.1 && t < total - 0.4);
+  let best = time;
+  let bestD = Infinity;
+  for (const e of events) {
+    const d = Math.abs(e - time);
+    if (d < bestD) {
+      bestD = d;
+      best = e;
+    }
+  }
+  return bestD <= 0.9 ? Number(best.toFixed(3)) : time;
+}
+
+/** Optional opening / middle / closing text. Subtle, never cheesy. */
+export function textSlotsFor(
+  text: TextSettings | undefined,
+  total: number,
+  beatMap: BeatMap | null,
+): TextSlot[] {
+  if (!text) return [];
+  const style = TEXT_STYLE[text.style] ?? "minimal_caption";
+  const out: TextSlot[] = [];
+  const push = (id: string, label: string, value: string, start: number, duration: number) => {
+    const v = value.trim();
+    if (!v) return;
+    const s = Math.max(0, Math.min(snapToMusic(start, beatMap, total), total - 0.6));
+    out.push({
+      id,
+      label,
+      value: v,
+      start: Number(s.toFixed(3)),
+      duration: Number(Math.min(duration, total - s).toFixed(3)),
+      style,
+      position: text.placement,
+      align: text.placement === "center" ? "center" : "left",
+      ...(text.fontKey ? { fontKey: text.fontKey } : {}),
+      animSpeed: 0.7,
+    });
+  };
+  push("text-open", "Opening", text.opening, Math.min(0.4, total * 0.05), 2.4);
+  push("text-mid", "Middle", text.middle, total * 0.45, 2.2);
+  push("text-close", "Closing", text.closing, Math.max(0, total - 2.6), 2.4);
+  return out;
+}
+
+/* ----------------------------------------------------------------- logo */
+
+export function logoSpecFor(settings: MakeSettings, total: number, logoKey: string | null) {
+  const logo = settings.logo;
+  if (!logo || logo.mode === "none" || !logoKey) return undefined;
+  const appearances: { start: number; duration: number; hero?: boolean }[] = [];
+  if (logo.mode === "watermark") appearances.push({ start: 0, duration: total });
+  if (logo.mode === "intro" || logo.mode === "both")
+    appearances.push({ start: 0, duration: Math.min(1.6, total * 0.2), hero: true });
+  if (logo.mode === "outro" || logo.mode === "both")
+    appearances.push({
+      start: Math.max(0, total - 1.8),
+      duration: Math.min(1.8, total),
+      hero: true,
+    });
+  if (!appearances.length) return undefined;
+  return {
+    mediaKey: logoKey,
+    position: logo.mode === "watermark" ? logo.position : "center",
+    scale: logo.scale || 1,
+    appearances,
+  };
+}
+
 
 export function pickOffset(clip: Clip, need: number, rand: () => number) {
   const usable = clipLength(clip);
