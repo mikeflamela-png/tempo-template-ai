@@ -15,9 +15,13 @@ import { Route as BrandRouteImport } from './routes/brand'
 import { Route as LibraryRouteImport } from './routes/library'
 import { Route as ProjectsRouteImport } from './routes/projects'
 import { Route as EditorIdRouteImport } from './routes/editor.$id'
+import { Route as PIdRouteImport } from './routes/p.$id'
 import { Route as SettingsRenderingRouteImport } from './routes/settings.rendering'
 import { Route as ApiPublicRenderRouteImport } from './routes/api/public/render'
 import { Route as ApiPublicRenderHealthRouteImport } from './routes/api/public/render-health'
+import { Route as PIdFootageRouteImport } from './routes/p.$id.footage'
+import { Route as PIdMakeRouteImport } from './routes/p.$id.make'
+import { Route as PIdSelectsRouteImport } from './routes/p.$id.selects'
 import { Route as ApiPublicRenderDownloadIdRouteImport } from './routes/api/public/render-download.$id'
 import { Route as ApiPublicRenderStatusIdRouteImport } from './routes/api/public/render-status.$id'
 
@@ -51,6 +55,11 @@ const EditorIdRoute = EditorIdRouteImport.update({
   path: '/editor/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PIdRoute = PIdRouteImport.update({
+  id: '/p/$id',
+  path: '/p/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SettingsRenderingRoute = SettingsRenderingRouteImport.update({
   id: '/settings/rendering',
   path: '/settings/rendering',
@@ -65,6 +74,21 @@ const ApiPublicRenderHealthRoute = ApiPublicRenderHealthRouteImport.update({
   id: '/api/public/render-health',
   path: '/api/public/render-health',
   getParentRoute: () => rootRouteImport,
+} as any)
+const PIdFootageRoute = PIdFootageRouteImport.update({
+  id: '/footage',
+  path: '/footage',
+  getParentRoute: () => PIdRoute,
+} as any)
+const PIdMakeRoute = PIdMakeRouteImport.update({
+  id: '/make',
+  path: '/make',
+  getParentRoute: () => PIdRoute,
+} as any)
+const PIdSelectsRoute = PIdSelectsRouteImport.update({
+  id: '/selects',
+  path: '/selects',
+  getParentRoute: () => PIdRoute,
 } as any)
 const ApiPublicRenderDownloadIdRoute =
   ApiPublicRenderDownloadIdRouteImport.update({
@@ -85,9 +109,13 @@ export interface FileRoutesByFullPath {
   '/library': typeof LibraryRoute
   '/projects': typeof ProjectsRoute
   '/editor/$id': typeof EditorIdRoute
+  '/p/$id': typeof PIdRouteWithChildren
   '/settings/rendering': typeof SettingsRenderingRoute
   '/api/public/render': typeof ApiPublicRenderRoute
   '/api/public/render-health': typeof ApiPublicRenderHealthRoute
+  '/p/$id/footage': typeof PIdFootageRoute
+  '/p/$id/make': typeof PIdMakeRoute
+  '/p/$id/selects': typeof PIdSelectsRoute
   '/api/public/render-download/$id': typeof ApiPublicRenderDownloadIdRoute
   '/api/public/render-status/$id': typeof ApiPublicRenderStatusIdRoute
 }
@@ -98,9 +126,13 @@ export interface FileRoutesByTo {
   '/library': typeof LibraryRoute
   '/projects': typeof ProjectsRoute
   '/editor/$id': typeof EditorIdRoute
+  '/p/$id': typeof PIdRouteWithChildren
   '/settings/rendering': typeof SettingsRenderingRoute
   '/api/public/render': typeof ApiPublicRenderRoute
   '/api/public/render-health': typeof ApiPublicRenderHealthRoute
+  '/p/$id/footage': typeof PIdFootageRoute
+  '/p/$id/make': typeof PIdMakeRoute
+  '/p/$id/selects': typeof PIdSelectsRoute
   '/api/public/render-download/$id': typeof ApiPublicRenderDownloadIdRoute
   '/api/public/render-status/$id': typeof ApiPublicRenderStatusIdRoute
 }
@@ -112,9 +144,13 @@ export interface FileRoutesById {
   '/library': typeof LibraryRoute
   '/projects': typeof ProjectsRoute
   '/editor/$id': typeof EditorIdRoute
+  '/p/$id': typeof PIdRouteWithChildren
   '/settings/rendering': typeof SettingsRenderingRoute
   '/api/public/render': typeof ApiPublicRenderRoute
   '/api/public/render-health': typeof ApiPublicRenderHealthRoute
+  '/p/$id/footage': typeof PIdFootageRoute
+  '/p/$id/make': typeof PIdMakeRoute
+  '/p/$id/selects': typeof PIdSelectsRoute
   '/api/public/render-download/$id': typeof ApiPublicRenderDownloadIdRoute
   '/api/public/render-status/$id': typeof ApiPublicRenderStatusIdRoute
 }
@@ -127,9 +163,13 @@ export interface FileRouteTypes {
     | '/library'
     | '/projects'
     | '/editor/$id'
+    | '/p/$id'
     | '/settings/rendering'
     | '/api/public/render'
     | '/api/public/render-health'
+    | '/p/$id/footage'
+    | '/p/$id/make'
+    | '/p/$id/selects'
     | '/api/public/render-download/$id'
     | '/api/public/render-status/$id'
   fileRoutesByTo: FileRoutesByTo
@@ -140,9 +180,13 @@ export interface FileRouteTypes {
     | '/library'
     | '/projects'
     | '/editor/$id'
+    | '/p/$id'
     | '/settings/rendering'
     | '/api/public/render'
     | '/api/public/render-health'
+    | '/p/$id/footage'
+    | '/p/$id/make'
+    | '/p/$id/selects'
     | '/api/public/render-download/$id'
     | '/api/public/render-status/$id'
   id:
@@ -153,9 +197,13 @@ export interface FileRouteTypes {
     | '/library'
     | '/projects'
     | '/editor/$id'
+    | '/p/$id'
     | '/settings/rendering'
     | '/api/public/render'
     | '/api/public/render-health'
+    | '/p/$id/footage'
+    | '/p/$id/make'
+    | '/p/$id/selects'
     | '/api/public/render-download/$id'
     | '/api/public/render-status/$id'
   fileRoutesById: FileRoutesById
@@ -167,6 +215,7 @@ export interface RootRouteChildren {
   LibraryRoute: typeof LibraryRoute
   ProjectsRoute: typeof ProjectsRoute
   EditorIdRoute: typeof EditorIdRoute
+  PIdRoute: typeof PIdRouteWithChildren
   SettingsRenderingRoute: typeof SettingsRenderingRoute
   ApiPublicRenderRoute: typeof ApiPublicRenderRoute
   ApiPublicRenderHealthRoute: typeof ApiPublicRenderHealthRoute
@@ -218,6 +267,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof EditorIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/p/$id': {
+      id: '/p/$id'
+      path: '/p/$id'
+      fullPath: '/p/$id'
+      preLoaderRoute: typeof PIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/settings/rendering': {
       id: '/settings/rendering'
       path: '/settings/rendering'
@@ -239,6 +295,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicRenderHealthRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/p/$id/footage': {
+      id: '/p/$id/footage'
+      path: '/footage'
+      fullPath: '/p/$id/footage'
+      preLoaderRoute: typeof PIdFootageRouteImport
+      parentRoute: typeof PIdRoute
+    }
+    '/p/$id/make': {
+      id: '/p/$id/make'
+      path: '/make'
+      fullPath: '/p/$id/make'
+      preLoaderRoute: typeof PIdMakeRouteImport
+      parentRoute: typeof PIdRoute
+    }
+    '/p/$id/selects': {
+      id: '/p/$id/selects'
+      path: '/selects'
+      fullPath: '/p/$id/selects'
+      preLoaderRoute: typeof PIdSelectsRouteImport
+      parentRoute: typeof PIdRoute
+    }
     '/api/public/render-download/$id': {
       id: '/api/public/render-download/$id'
       path: '/api/public/render-download/$id'
@@ -256,6 +333,20 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface PIdRouteChildren {
+  PIdFootageRoute: typeof PIdFootageRoute
+  PIdMakeRoute: typeof PIdMakeRoute
+  PIdSelectsRoute: typeof PIdSelectsRoute
+}
+
+const PIdRouteChildren: PIdRouteChildren = {
+  PIdFootageRoute: PIdFootageRoute,
+  PIdMakeRoute: PIdMakeRoute,
+  PIdSelectsRoute: PIdSelectsRoute,
+}
+
+const PIdRouteWithChildren = PIdRoute._addFileChildren(PIdRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AdvancedRoute: AdvancedRoute,
@@ -263,6 +354,7 @@ const rootRouteChildren: RootRouteChildren = {
   LibraryRoute: LibraryRoute,
   ProjectsRoute: ProjectsRoute,
   EditorIdRoute: EditorIdRoute,
+  PIdRoute: PIdRouteWithChildren,
   SettingsRenderingRoute: SettingsRenderingRoute,
   ApiPublicRenderRoute: ApiPublicRenderRoute,
   ApiPublicRenderHealthRoute: ApiPublicRenderHealthRoute,
