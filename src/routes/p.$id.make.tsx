@@ -126,7 +126,11 @@ function MakePage() {
     setWorking(true);
     setTimeout(() => {
       try {
-        const versions = buildVersions(usable, settings, project?.music?.beatMap ?? null);
+        const versions = buildVersions(usable, settings, project?.music?.beatMap ?? null, {
+          scenes,
+          logoKey: project?.logo ? LOGO_KEY : null,
+        });
+
         saveVersions(id, versions, settings);
         void navigate({ to: "/p/$id/results", params: { id } });
       } catch (e) {
