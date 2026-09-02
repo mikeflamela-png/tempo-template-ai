@@ -1,14 +1,20 @@
 import { createFileRoute, Link, useParams } from "@tanstack/react-router";
 import { useMemo, useRef, useState } from "react";
-import { Film, Clapperboard, Heart, Loader2, Scissors, Trash2, X, Merge } from "lucide-react";
+import { Check, Film, Clapperboard, Group, Heart, Loader2, Scissors, Trash2, X, Merge } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import ClipVideo from "@/components/selects/ClipVideo";
 import StarRating from "@/components/selects/StarRating";
 import TrimBar from "@/components/selects/TrimBar";
 import {
+  addToScene,
   deleteClip,
+  groupAsScene,
   mergeWithNext,
+  projectScenes,
+  removeFromScene,
+  renameScene,
+  ungroupScene,
   projectById,
   projectClips,
   splitClip,
@@ -16,6 +22,7 @@ import {
   updateClips,
   useFootage,
 } from "@/lib/footage/store";
+import { suggestScenes, type SceneSuggestion } from "@/lib/footage/scenes";
 import { ingestClipFiles, ingestStringout, type IngestProgress } from "@/lib/footage/ingest";
 import { SHOT_TYPES, SHOT_TYPE_LABEL, type Clip, type ShotType } from "@/lib/footage/types";
 
