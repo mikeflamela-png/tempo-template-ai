@@ -279,6 +279,44 @@ function FootagePage() {
                 ))}
               </select>
               <button
+                onClick={() => {
+                  const name = window.prompt("Name this scene (optional)", "") ?? "";
+                  const scene = groupAsScene(id, selected, name);
+                  setSelected([]);
+                  toast.success(`${scene.name} created`);
+                }}
+                className="flex items-center gap-1 rounded-full border border-primary/60 px-3 py-1 text-[11px] uppercase tracking-widest text-primary"
+              >
+                <Group className="size-3" /> Group as scene
+              </button>
+              {scenes.length > 0 && (
+                <select
+                  onChange={(e) => {
+                    if (!e.target.value) return;
+                    addToScene(e.target.value, selected);
+                    setSelected([]);
+                  }}
+                  defaultValue=""
+                  className="rounded-full border border-border bg-transparent px-3 py-1 text-[11px] uppercase tracking-widest text-muted-foreground"
+                >
+                  <option value="">Add to scene…</option>
+                  {scenes.map((s) => (
+                    <option key={s.id} value={s.id} className="bg-background">
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <button
+                onClick={() => {
+                  removeFromScene(selected);
+                  setSelected([]);
+                }}
+                className="text-[11px] uppercase tracking-widest text-muted-foreground hover:text-foreground"
+              >
+                Remove from scene
+              </button>
+              <button
                 onClick={() => setSelected([])}
                 className="ml-auto text-xs uppercase tracking-widest text-muted-foreground hover:text-foreground"
               >
@@ -286,6 +324,99 @@ function FootagePage() {
               </button>
             </div>
           )}
+
+          {/* -------------------------------------------------- scene groups */}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[10px] uppercase tracking-[0.25em] text-muted-foreground">
+              Scenes
+            </span>
+            {scenes.map((s) => {
+              const members = clips.filter((c) => c.sceneId === s.id);
+              return (
+                <span
+                  key={s.id}
+                  className="flex items-center gap-2 rounded-full border border-border bg-card/50 px-3 py-1 text-[11px]"
+                >
+                  <button
+                    onClick={() => setSelected(members.map((m) => m.id))}
+                    className="hover:text-primary"
+                  >
+                    {s.name} · {members.length}
+                  </button>
+                  <button
+                    onClick={() => {
+                      const name = window.prompt("Rename scene", s.name);
+                      if (name) renameScene(s.id, name);
+                    }}
+                    className="text-muted-foreground hover:text-foreground"
+                  >
+                    Rename
+                  </button>
+                  <button
+                    onClick={() => ungroupScene(s.id)}
+                    className="text-muted-foreground hover:text-destructive"
+                  >
+                    Ungroup
+                  </button>
+                </span>
+              );
+            })}
+            {!scenes.length && (
+              <span className="text-[11px] text-muted-foreground">
+                Select clips, then Group as scene.
+              </span>
+            )}
+            <button
+              onClick={() => void runSuggestions()}
+              disabled={suggesting}
+              className="ml-auto text-[11px] uppercase tracking-widest text-muted-foreground hover:text-foreground"
+            >
+              {suggesting ? "Looking…" : "Suggest scenes"}
+            </button>
+          </div>
+
+          {suggestions.length > 0 && (
+            <div className="space-y-2 rounded-xl border border-dashed border-primary/40 p-3">
+              {suggestions.map((sg) => {
+                const members = clips.filter((c) => sg.clipIds.includes(c.id));
+                return (
+                  <div key={sg.id} className="flex items-center gap-3">
+                    <div className="flex gap-1">
+                      {members.slice(0, 6).map((m) =>
+                        m.thumb ? (
+                          <img
+                            key={m.id}
+                            src={m.thumb}
+                            alt={m.name}
+                            className="h-8 w-12 rounded object-cover"
+                          />
+                        ) : null,
+                      )}
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">
+                      Suggested scene · {members.length} clips
+                    </p>
+                    <button
+                      onClick={() => {
+                        groupAsScene(id, sg.clipIds);
+                        setSuggestions((s) => s.filter((x) => x.id !== sg.id));
+                      }}
+                      className="ml-auto rounded-full border border-primary/60 px-3 py-1 text-[11px] uppercase tracking-widest text-primary"
+                    >
+                      Accept
+                    </button>
+                    <button
+                      onClick={() => setSuggestions((s) => s.filter((x) => x.id !== sg.id))}
+                      className="text-[11px] uppercase tracking-widest text-muted-foreground hover:text-foreground"
+                    >
+                      Ignore
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
 
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
             {shown.map((c) => {
