@@ -3,12 +3,14 @@ import { useState } from "react";
 import { MoreHorizontal } from "lucide-react";
 
 const PRIMARY = [
-  { to: "/", label: "Create" },
+  { to: "/", label: "Home" },
   { to: "/projects", label: "Projects" },
   { to: "/library", label: "Library" },
 ] as const;
 
 const OVERFLOW = [
+  { to: "/recipe", label: "Recipe builder" },
+  { to: "/advanced", label: "Advanced" },
   { to: "/brand", label: "Brand" },
   { to: "/settings/rendering", label: "Rendering" },
 ] as const;
