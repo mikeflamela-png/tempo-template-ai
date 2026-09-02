@@ -53,10 +53,21 @@ export interface Clip {
   favorite: boolean;
   rejected: boolean;
   shotType: ShotType | null;
+  /** scene group this clip belongs to, if any */
+  sceneId?: string | null;
   /** small jpeg data url */
   thumb?: string;
   order: number;
 }
+
+/** A named group of clips shot in the same place / moment. */
+export interface Scene {
+  id: string;
+  projectId: string;
+  name: string;
+  createdAt: number;
+}
+
 
 export function clipLength(c: Clip) {
   return Math.max(0.1, c.out - c.in);
