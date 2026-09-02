@@ -129,7 +129,7 @@ function ResultsPage() {
         <div>
           <div
             className="overflow-hidden rounded-2xl bg-black"
-            style={{ aspectRatio: `${version.spec.width} / ${version.spec.height}`, maxHeight: "62vh", margin: "0 auto" }}
+            style={{ aspectRatio: `${version.spec.width} / ${version.spec.height}`, height: "min(62vh, 720px)", margin: "0 auto" }}
           >
             <TemplatePlayer
               key={`${version.id}-${JSON.stringify(version.plan)}-${tick}`}
