@@ -1113,6 +1113,78 @@ export interface RenderFontFace {
   url: string;
 }
 
+/* ------------------------------------------------------------------ logo */
+
+const LOGO_ANCHOR: Record<string, React.CSSProperties> = {
+  center: { justifyContent: "center", alignItems: "center" },
+  "top-left": { justifyContent: "flex-start", alignItems: "flex-start" },
+  "top-right": { justifyContent: "flex-start", alignItems: "flex-end" },
+  "bottom-left": { justifyContent: "flex-end", alignItems: "flex-start" },
+  "bottom-right": { justifyContent: "flex-end", alignItems: "flex-end" },
+};
+
+const LogoAppearance: React.FC<{
+  url: string;
+  position: string;
+  scale: number;
+  hero: boolean;
+  frames: number;
+  width: number;
+}> = ({ url, position, scale, hero, frames, width }) => {
+  const frame = useCurrentFrame();
+  const fade = Math.min(6, Math.max(2, Math.round(frames * 0.2)));
+  const opacity = hero
+    ? interpolate(frame, [0, fade, frames - fade, frames], [0, 1, 1, 0], {
+        extrapolateLeft: "clamp",
+        extrapolateRight: "clamp",
+      })
+    : 0.72;
+  const size = width * (hero ? 0.42 : 0.16) * scale;
+  return (
+    <AbsoluteFill
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        padding: width * 0.06,
+        ...(LOGO_ANCHOR[position] ?? LOGO_ANCHOR['center']),
+      }}
+    >
+      <Img src={url} style={{ width: size, objectFit: "contain", opacity }} />
+    </AbsoluteFill>
+  );
+};
+
+const LogoLayer: React.FC<{ spec: TemplateSpec; media: MediaMap }> = ({ spec, media }) => {
+  const logo = spec.logo;
+  const asset = logo ? media[logo.mediaKey] : undefined;
+  if (!logo || !asset) return null;
+  return (
+    <>
+      {logo.appearances.map((a, i) => {
+        const frames = Math.max(2, Math.round(a.duration * spec.fps));
+        return (
+          <Sequence
+            key={`logo-${i}`}
+            from={Math.round(a.start * spec.fps)}
+            durationInFrames={frames}
+            layout="none"
+          >
+            <LogoAppearance
+              url={asset.url}
+              position={logo.position}
+              scale={logo.scale}
+              hero={Boolean(a.hero)}
+              frames={frames}
+              width={spec.width}
+            />
+          </Sequence>
+        );
+      })}
+    </>
+  );
+};
+
+
 export interface TemplateVideoProps {
   spec: TemplateSpec;
   media: MediaMap;
@@ -1246,7 +1318,9 @@ export const TemplateVideo: React.FC<TemplateVideoProps> = ({
         fps={spec.fps}
         assetUrls={assetUrls}
       />
+      <LogoLayer spec={spec} media={media} />
     </AbsoluteFill>
+
 
   );
 

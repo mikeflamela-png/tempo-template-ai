@@ -3,17 +3,19 @@ import { getMedia, putMedia, deleteMedia } from "./db";
 import type {
   Clip,
   EditVersion,
+  LogoRecord,
   MakeSettings,
   MusicRecord,
   Project,
+  Scene,
   ShotType,
   SourceRecord,
 } from "./types";
 
 /**
- * Project memory. Ratings, favorites, rejects, shot types, trims, music and
- * generated versions all survive a reload. Persisted in IndexedDB (thumbnails
- * would blow the localStorage quota).
+ * Project memory. Ratings, favorites, rejects, shot types, trims, scene groups,
+ * music and generated versions all survive a reload. Persisted in IndexedDB
+ * (thumbnails would blow the localStorage quota).
  */
 const STATE_KEY = "tempo-selects-state:v1";
 
@@ -21,14 +23,16 @@ interface State {
   projects: Project[];
   sources: SourceRecord[];
   clips: Clip[];
+  scenes: Scene[];
   ready: boolean;
 }
 
-const empty: State = { projects: [], sources: [], clips: [], ready: false };
+const empty: State = { projects: [], sources: [], clips: [], scenes: [], ready: false };
 let state: State = empty;
 const listeners = new Set<() => void>();
 let hydrating = false;
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
+
 
 function emit() {
   listeners.forEach((l) => l());
@@ -42,7 +46,9 @@ function persist() {
       projects: state.projects,
       sources: state.sources,
       clips: state.clips,
+      scenes: state.scenes,
     });
+
     void putMedia(STATE_KEY, new Blob([payload], { type: "application/json" })).catch(() => {});
   }, 300);
 }
@@ -73,7 +79,9 @@ export function hydrateFootage() {
           projects: mergeById(parsed.projects ?? [], state.projects),
           sources: mergeById(parsed.sources ?? [], state.sources),
           clips: mergeById(parsed.clips ?? [], state.clips),
+          scenes: mergeById(parsed.scenes ?? [], state.scenes),
           ready: true,
+
         };
       } else {
         state = { ...state, ready: true };
@@ -110,7 +118,17 @@ export const DEFAULT_SETTINGS: MakeSettings = {
   styleKey: "clean",
   effects: "light",
   count: 5,
+  logo: { mode: "none", position: "center", scale: 1 },
+  text: {
+    opening: "",
+    middle: "",
+    closing: "",
+    style: "minimal",
+    placement: "bottom",
+    fontKey: "inter-tight",
+  },
 };
+
 
 export function createProject(name: string, kind: Project["kind"]): Project {
   const p: Project = {
@@ -144,12 +162,71 @@ export function deleteProject(id: string) {
     projects: state.projects.filter((p) => p.id !== id),
     sources: state.sources.filter((s) => s.projectId !== id),
     clips: state.clips.filter((c) => c.projectId !== id),
+    scenes: state.scenes.filter((s) => s.projectId !== id),
   });
 }
 
 export function projectById(id: string) {
   return state.projects.find((p) => p.id === id) ?? null;
 }
+
+export function setLogo(projectId: string, logo: LogoRecord | null) {
+  updateProject(projectId, { logo });
+}
+
+/* ------------------------------------------------------------------- scenes */
+
+export function projectScenes(projectId: string): Scene[] {
+  return state.scenes.filter((s) => s.projectId === projectId);
+}
+
+export function sceneById(id: string | null | undefined) {
+  return id ? (state.scenes.find((s) => s.id === id) ?? null) : null;
+}
+
+/** Group clips into a new scene. Naming is optional. */
+export function groupAsScene(projectId: string, clipIds: string[], name?: string): Scene {
+  const index = projectScenes(projectId).length + 1;
+  const scene: Scene = {
+    id: `sc-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+    projectId,
+    name: (name ?? "").trim() || `Scene ${index}`,
+    createdAt: Date.now(),
+  };
+  const set = new Set(clipIds);
+  commit({
+    ...state,
+    scenes: [...state.scenes, scene],
+    clips: state.clips.map((c) => (set.has(c.id) ? { ...c, sceneId: scene.id } : c)),
+  });
+  return scene;
+}
+
+export function addToScene(sceneId: string, clipIds: string[]) {
+  const set = new Set(clipIds);
+  commit({ ...state, clips: state.clips.map((c) => (set.has(c.id) ? { ...c, sceneId } : c)) });
+}
+
+export function removeFromScene(clipIds: string[]) {
+  const set = new Set(clipIds);
+  commit({ ...state, clips: state.clips.map((c) => (set.has(c.id) ? { ...c, sceneId: null } : c)) });
+}
+
+export function renameScene(sceneId: string, name: string) {
+  commit({
+    ...state,
+    scenes: state.scenes.map((s) => (s.id === sceneId ? { ...s, name: name.trim() || s.name } : s)),
+  });
+}
+
+export function ungroupScene(sceneId: string) {
+  commit({
+    ...state,
+    scenes: state.scenes.filter((s) => s.id !== sceneId),
+    clips: state.clips.map((c) => (c.sceneId === sceneId ? { ...c, sceneId: null } : c)),
+  });
+}
+
 
 /* -------------------------------------------------------------------- media */
 

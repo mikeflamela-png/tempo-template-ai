@@ -63,9 +63,10 @@ function ResultsPage() {
   }, [project?.music, tick]);
 
   const media = useMemo(
-    () => (version ? mediaMapFor(version, clips) : {}),
-    [version, clips, tick],
+    () => (version ? mediaMapFor(version, clips, project?.logo?.id ?? null) : {}),
+    [version, clips, project?.logo?.id, tick],
   );
+
 
   if (!version) {
     return (

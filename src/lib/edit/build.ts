@@ -1,17 +1,25 @@
 import type {
-  Animation,
   BeatMap,
   MediaMap,
   MediaSlot,
   Overlay,
+  OverlayType,
   Purpose,
   TemplateSpec,
-  Transition,
+  TextSlot,
 } from "@/lib/template/types";
-import type { Clip, EditVersion, MakeSettings, ShotType } from "@/lib/footage/types";
+import type {
+  Clip,
+  EditVersion,
+  MakeSettings,
+  Scene,
+  ShotType,
+  TextSettings,
+} from "@/lib/footage/types";
 import { FORMATS, clipLength } from "@/lib/footage/types";
 import { cachedUrl } from "@/lib/footage/db";
 import { recipeByKey, simpleStyleFor, type EditRecipe } from "./recipes";
+
 
 /* ------------------------------------------------------------------ rng */
 
@@ -40,6 +48,10 @@ export interface ScoreContext {
   used: Record<string, number>;
   previousClipId?: string | undefined;
   previousSourceId?: string | undefined;
+  /** scene we're currently inside — clips from it are strongly preferred */
+  sceneId?: string | null | undefined;
+  /** scenes already used, so a new scene is fresh rather than a repeat */
+  usedScenes?: Record<string, number> | undefined;
 }
 
 /** Deterministic weighted score. Rejected clips are impossible to select. */
@@ -50,6 +62,15 @@ export function scoreClip(clip: Clip, ctx: ScoreContext): number {
 
   if (ctx.wantType && clip.shotType) {
     score *= clip.shotType === ctx.wantType ? 2.4 : 0.8;
+  }
+
+  // scene continuity: staying inside a scene reads as a deliberate sequence
+  if (ctx.sceneId) {
+    if (clip.sceneId === ctx.sceneId) score *= 3.2;
+    else score *= 0.55;
+  } else if (clip.sceneId && ctx.usedScenes) {
+    const seen = ctx.usedScenes[clip.sceneId] ?? 0;
+    if (seen > 0) score *= 0.7 ** Math.min(seen, 4);
   }
 
   const usable = clipLength(clip);
@@ -63,6 +84,7 @@ export function scoreClip(clip: Clip, ctx: ScoreContext): number {
 
   return score;
 }
+
 
 function weightedPick(clips: Clip[], ctx: ScoreContext, rand: () => number): Clip | null {
   const scored = clips.map((c) => ({ c, s: scoreClip(c, ctx) })).filter((x) => x.s > 0);
@@ -94,6 +116,16 @@ export function alternativesFor(
 
 /* --------------------------------------------------------- shot timing */
 
+const EVENT_RANK: Record<string, number> = {
+  drop: 5,
+  phraseChange: 4.5,
+  downbeat: 4,
+  energyShift: 3.5,
+  strongBeat: 3,
+  transient: 2,
+  minorBeat: 1,
+};
+
 function beatTimes(beatMap: BeatMap | null): number[] {
   if (!beatMap) return [];
   return beatMap.events
@@ -102,7 +134,29 @@ function beatTimes(beatMap: BeatMap | null): number[] {
     .sort((a, b) => a - b);
 }
 
-/** Cut plan: cumulative cut times across the edit, musical but not robotic. */
+/** Musically significant moments, strongest first in rank, sorted by time. */
+function cutCandidates(beatMap: BeatMap | null, minRank: number): number[] {
+  if (!beatMap) return [];
+  const seen = new Set<number>();
+  const out: number[] = [];
+  for (const e of [...beatMap.events].sort((a, b) => a.time - b.time)) {
+    if ((EVENT_RANK[e.kind] ?? 0) < minRank) continue;
+    const t = Number(e.time.toFixed(3));
+    if (seen.has(t)) continue;
+    seen.add(t);
+    out.push(t);
+  }
+  return out;
+}
+
+/**
+ * CUT PLAN — the music leads.
+ *
+ * When a track exists, cuts land ON detected beats/transients: we walk the
+ * musical grid and take the event closest to the style's target shot length,
+ * so pacing still differs per style but every cut is on the music. Without
+ * music we fall back to the styled pacing curve.
+ */
 export function planCuts(
   recipe: EditRecipe,
   total: number,
@@ -110,55 +164,69 @@ export function planCuts(
   rand: () => number,
 ): number[] {
   const base = recipe.avgShot;
-  const n = Math.max(3, Math.round(total / base));
-  const raw: number[] = [];
-  for (let i = 0; i < n; i++) {
-    const p = n === 1 ? 0 : i / (n - 1);
-    // accelerate: earlier shots longer, later shots shorter
-    const ramp = 1 + recipe.accelerate * (0.45 - p * 0.9);
-    const jitter = 0.82 + rand() * 0.36;
-    raw.push(base * ramp * jitter);
-  }
-  raw[n - 1] = (raw[n - 1] ?? base) * recipe.endingHold;
-  const sum = raw.reduce((a, b) => a + b, 0);
-  const scaled = raw.map((d) => (d / sum) * total);
 
-  // convert to boundaries, then snap a proportion of them to musical events
-  const beats = beatTimes(beatMap);
-  const bounds: number[] = [];
-  let t = 0;
-  for (let i = 0; i < scaled.length - 1; i++) {
-    t += scaled[i]!;
-    bounds.push(t);
-  }
-  if (beats.length && recipe.beatSync > 0.05) {
-    const tol = 0.18 + recipe.beatSync * 0.32;
-    for (let i = 0; i < bounds.length; i++) {
-      if (rand() > recipe.beatSync) continue; // some cuts intentionally breathe
-      const b = bounds[i]!;
-      let best = b;
-      let bestD = Infinity;
-      for (const beat of beats) {
-        const d = Math.abs(beat - b);
-        if (d < bestD) {
-          bestD = d;
-          best = beat;
+  const target = (i: number, n: number) => {
+    const p = n <= 1 ? 0 : i / (n - 1);
+    return base * (1 + recipe.accelerate * (0.45 - p * 0.9));
+  };
+
+  // ---- musical path ------------------------------------------------------
+  if (beatMap && recipe.beatSync > 0.05) {
+    // relax the significance floor until we have enough places to cut
+    let events: number[] = [];
+    for (const rank of [4, 3, 2, 1]) {
+      events = cutCandidates(beatMap, rank).filter((t) => t > 0.2 && t < total - 0.25);
+      if (events.length >= Math.max(3, total / base / 1.4)) break;
+    }
+    if (events.length >= 3) {
+      const n = Math.max(3, Math.round(total / base));
+      const bounds: number[] = [];
+      let cursor = 0;
+      let i = 0;
+      while (cursor < total - base * 0.6 && bounds.length < n * 2) {
+        const want = cursor + target(i, n) * (0.9 + rand() * 0.2);
+        let best = -1;
+        let bestD = Infinity;
+        for (const e of events) {
+          if (e <= cursor + Math.max(0.28, base * 0.4)) continue;
+          const d = Math.abs(e - want);
+          if (d < bestD) {
+            bestD = d;
+            best = e;
+          }
         }
+        if (best < 0 || best >= total - 0.25) break;
+        bounds.push(best);
+        cursor = best;
+        i++;
       }
-      if (bestD <= tol) bounds[i] = best;
+      if (bounds.length >= 2) {
+        const durations: number[] = [];
+        let prev = 0;
+        for (const b of bounds) {
+          durations.push(Number((b - prev).toFixed(3)));
+          prev = b;
+        }
+        const tail = Number((total - prev).toFixed(3));
+        if (tail < 0.3 && durations.length) {
+          durations[durations.length - 1] = Number(
+            (durations[durations.length - 1]! + tail).toFixed(3),
+          );
+        } else durations.push(tail);
+        return durations;
+      }
     }
   }
 
-  // rebuild durations, enforcing a floor
-  const durations: number[] = [];
-  let prev = 0;
-  for (const b of bounds) {
-    durations.push(Math.max(0.28, Number((b - prev).toFixed(3))));
-    prev = prev + durations[durations.length - 1]!;
-  }
-  durations.push(Math.max(0.3, Number((total - prev).toFixed(3))));
-  return durations;
+  // ---- no music: styled pacing curve -------------------------------------
+  const n = Math.max(3, Math.round(total / base));
+  const raw: number[] = [];
+  for (let i = 0; i < n; i++) raw.push(target(i, n) * (0.85 + rand() * 0.3));
+  raw[n - 1] = (raw[n - 1] ?? base) * recipe.endingHold;
+  const sum = raw.reduce((a, b) => a + b, 0);
+  return raw.map((d) => Number(((d / sum) * total).toFixed(3)));
 }
+
 
 /* ------------------------------------------------------------- building */
 
@@ -173,37 +241,39 @@ const PURPOSE_BY_TYPE: Record<ShotType, Purpose> = {
   other: "detail",
 };
 
-const IN_ANIMATIONS: Animation[] = ["slow_push_in", "push_in", "punch_in", "drift", "pan_left"];
+/**
+ * CLEAN CUTS ONLY. Tempo never generates dissolves, fades, zoom/blur/whip
+ * transitions or fake camera moves — every shot change is a hard cut. The only
+ * things that may sit between shots are motion graphics the user uploaded
+ * themselves (handled by the motion asset layer, untouched here).
+ */
 const LAYOUT_POOL = ["split-left", "split-right", "band", "inset", "diag-left", "strip-2"] as const;
 
-function overlaysFor(recipe: EditRecipe, level: MakeSettings["effects"], total: number, rand: () => number): Overlay[] {
+
+function overlaysFor(recipe: EditRecipe, level: MakeSettings["effects"], total: number, _rand: () => number): Overlay[] {
   if (level === "none") return [];
-  const density = level === "light" ? 0.35 : 0.8;
   const out: Overlay[] = [];
-  // continuous texture overlays run the whole edit
+  // Clean cuts only: continuous film/paper textures are allowed, but no flashes,
+  // blurs or other transition-like accents are ever generated automatically.
   const textures = recipe.overlays.filter((o) =>
     ["grain", "vignette", "film_border", "paper", "noise", "camcorder", "halation", "bloom"].includes(o),
   );
-  const hits = recipe.overlays.filter((o) => !textures.includes(o));
   const keepTextures = level === "light" ? textures.slice(0, 1) : textures.slice(0, 3);
   for (const t of keepTextures) out.push({ type: t, start: 0, duration: total });
-  const hitCount = Math.round(total * density * 0.25);
-  for (let i = 0; i < hitCount && hits.length; i++) {
-    const type = hits[Math.floor(rand() * hits.length)]!;
-    out.push({
-      type,
-      start: Number((rand() * Math.max(0.1, total - 0.5)).toFixed(2)),
-      duration: 0.25,
-      accent: true,
-    });
-  }
   return out;
 }
+
 
 export interface BuildResult {
   spec: TemplateSpec;
   plan: Record<string, string>;
   offsets: Record<string, number>;
+}
+
+export interface BuildOptions {
+  scenes?: Scene[];
+  /** media map key that will hold the uploaded logo image */
+  logoKey?: string | null;
 }
 
 export function buildEdit(
@@ -212,6 +282,7 @@ export function buildEdit(
   beatMap: BeatMap | null,
   seed: number,
   name: string,
+  opts: BuildOptions = {},
 ): BuildResult {
   const recipe = recipeByKey(settings.styleKey);
   const style = simpleStyleFor(recipe);
@@ -221,6 +292,7 @@ export function buildEdit(
 
   const pool = clips.filter((c) => !c.rejected);
   const used: Record<string, number> = {};
+  const usedScenes: Record<string, number> = {};
   const slots: MediaSlot[] = [];
   const plan: Record<string, string> = {};
   const offsets: Record<string, number> = {};
@@ -228,18 +300,33 @@ export function buildEdit(
   // every version rotates the shot-type sequence so openings differ
   const rotate = Math.floor(rand() * recipe.sequence.length);
 
+  // scene continuity: stay inside a scene for a short run of shots, then move on
+  const runTarget = () => Math.max(1, Math.round(recipe.sceneRun * (0.7 + rand() * 0.8)));
+  let sceneId: string | null = null;
+  let runLeft = 0;
+
   let t = 0;
   let prevClip: Clip | null = null;
   durations.forEach((duration, i) => {
     const wantType = recipe.sequence[(i + rotate) % recipe.sequence.length] ?? null;
+    if (runLeft <= 0) sceneId = null;
     const ctx: ScoreContext = {
       need: duration,
       wantType,
       used,
       previousClipId: prevClip?.id,
       previousSourceId: prevClip?.sourceId,
+      sceneId,
+      usedScenes,
     };
-    const clip = weightedPick(pool, ctx, rand) ?? pool[i % Math.max(1, pool.length)] ?? null;
+    let clip = weightedPick(pool, ctx, rand);
+    if (!clip && sceneId) {
+      // scene exhausted — allow the edit to move on
+      sceneId = null;
+      runLeft = 0;
+      clip = weightedPick(pool, { ...ctx, sceneId: null }, rand);
+    }
+    clip = clip ?? pool[i % Math.max(1, pool.length)] ?? null;
     const id = `shot-${i + 1}`;
     const layout =
       i > 0 && i < durations.length - 1 && rand() < recipe.layoutChance
@@ -253,9 +340,9 @@ export function buildEdit(
       duration: Number(duration.toFixed(3)),
       purpose: clip?.shotType ? PURPOSE_BY_TYPE[clip.shotType] : wantType ? PURPOSE_BY_TYPE[wantType] : "detail",
       layout,
-      animationIn: rand() < 0.55 ? IN_ANIMATIONS[Math.floor(rand() * IN_ANIMATIONS.length)]! : "none",
-      transitionOut:
-        (recipe.transitions[Math.floor(rand() * recipe.transitions.length)] as Transition) ?? "hard_cut",
+      // CLEAN CUTS ONLY — no entrance motion, no generated transition
+      animationIn: "none",
+      transitionOut: "hard_cut",
     });
 
     if (clip) {
@@ -263,6 +350,17 @@ export function buildEdit(
       plan[id] = clip.id;
       offsets[id] = pickOffset(clip, duration, rand);
       prevClip = clip;
+      if (clip.sceneId) {
+        if (clip.sceneId === sceneId) runLeft -= 1;
+        else {
+          sceneId = clip.sceneId;
+          runLeft = runTarget() - 1;
+        }
+        usedScenes[clip.sceneId] = (usedScenes[clip.sceneId] ?? 0) + 1;
+      } else {
+        sceneId = null;
+        runLeft = 0;
+      }
     }
     t += duration;
   });
@@ -278,7 +376,7 @@ export function buildEdit(
     tags: [recipe.key, settings.format],
     palette: { bg: "#0a0a0a", ink: "#f5f5f0", accent: "#e7e2d6" },
     mediaSlots: slots,
-    textSlots: [],
+    textSlots: textSlotsFor(settings.text, total, beatMap),
     overlays: overlaysFor(recipe, settings.effects, total, rand),
     beatMarkers: beatTimes(beatMap).filter((b) => b < total),
     creativeProfile: {
@@ -286,14 +384,99 @@ export function buildEdit(
       energy: style.energy,
       pacing: style.pacing,
       typography: style.typography,
-      transitionStyle: style.transitionIntensity,
+      transitionStyle: "hard cuts only",
       structure: recipe.sequence.join(" → "),
     },
-    fontKey: style.stylePackKey,
+    fontKey: settings.text?.fontKey || style.stylePackKey,
   };
+
+  const logo = logoSpecFor(settings, total, opts.logoKey ?? null);
+  if (logo) spec.logo = logo;
 
   return { spec, plan, offsets };
 }
+
+/* ----------------------------------------------------------------- text */
+
+const TEXT_STYLE: Record<string, TextSlot["style"]> = {
+  minimal: "minimal_caption",
+  editorial: "centered_statement",
+  bold: "oversized_hook",
+  caption: "subtitle",
+};
+
+/** Snap a time to the nearest strong musical moment, when there is music. */
+function snapToMusic(time: number, beatMap: BeatMap | null, total: number) {
+  if (!beatMap) return time;
+  const events = cutCandidates(beatMap, 3.5).filter((t) => t > 0.1 && t < total - 0.4);
+  let best = time;
+  let bestD = Infinity;
+  for (const e of events) {
+    const d = Math.abs(e - time);
+    if (d < bestD) {
+      bestD = d;
+      best = e;
+    }
+  }
+  return bestD <= 0.9 ? Number(best.toFixed(3)) : time;
+}
+
+/** Optional opening / middle / closing text. Subtle, never cheesy. */
+export function textSlotsFor(
+  text: TextSettings | undefined,
+  total: number,
+  beatMap: BeatMap | null,
+): TextSlot[] {
+  if (!text) return [];
+  const style = TEXT_STYLE[text.style] ?? "minimal_caption";
+  const out: TextSlot[] = [];
+  const push = (id: string, label: string, value: string, start: number, duration: number) => {
+    const v = value.trim();
+    if (!v) return;
+    const s = Math.max(0, Math.min(snapToMusic(start, beatMap, total), total - 0.6));
+    out.push({
+      id,
+      label,
+      value: v,
+      start: Number(s.toFixed(3)),
+      duration: Number(Math.min(duration, total - s).toFixed(3)),
+      style,
+      position: text.placement,
+      align: text.placement === "center" ? "center" : "left",
+      ...(text.fontKey ? { fontKey: text.fontKey } : {}),
+      animSpeed: 0.7,
+    });
+  };
+  push("text-open", "Opening", text.opening, Math.min(0.4, total * 0.05), 2.4);
+  push("text-mid", "Middle", text.middle, total * 0.45, 2.2);
+  push("text-close", "Closing", text.closing, Math.max(0, total - 2.6), 2.4);
+  return out;
+}
+
+/* ----------------------------------------------------------------- logo */
+
+export function logoSpecFor(settings: MakeSettings, total: number, logoKey: string | null) {
+  const logo = settings.logo;
+  if (!logo || logo.mode === "none" || !logoKey) return undefined;
+  const appearances: { start: number; duration: number; hero?: boolean }[] = [];
+  if (logo.mode === "watermark") appearances.push({ start: 0, duration: total });
+  if (logo.mode === "intro" || logo.mode === "both")
+    appearances.push({ start: 0, duration: Math.min(1.6, total * 0.2), hero: true });
+  if (logo.mode === "outro" || logo.mode === "both")
+    appearances.push({
+      start: Math.max(0, total - 1.8),
+      duration: Math.min(1.8, total),
+      hero: true,
+    });
+  if (!appearances.length) return undefined;
+  return {
+    mediaKey: logoKey,
+    position: logo.mode === "watermark" ? logo.position : "center",
+    scale: logo.scale || 1,
+    appearances,
+  };
+}
+
 
 export function pickOffset(clip: Clip, need: number, rand: () => number) {
   const usable = clipLength(clip);
@@ -306,6 +489,7 @@ export function buildVersions(
   clips: Clip[],
   settings: MakeSettings,
   beatMap: BeatMap | null,
+  opts: BuildOptions = {},
 ): EditVersion[] {
   const stamp = Date.now();
   return Array.from({ length: settings.count }, (_, i) => {
@@ -316,6 +500,7 @@ export function buildVersions(
       beatMap,
       seed,
       `Version ${i + 1}`,
+      opts,
     );
     return {
       id: `v-${stamp.toString(36)}-${i}`,
@@ -332,7 +517,9 @@ export function buildVersions(
 
 /* ---------------------------------------------------------- media mapping */
 
-export function mediaMapFor(version: EditVersion, clips: Clip[]): MediaMap {
+export const LOGO_KEY = "logo";
+
+export function mediaMapFor(version: EditVersion, clips: Clip[], logoId?: string | null): MediaMap {
   const byId = new Map(clips.map((c) => [c.id, c]));
   const map: MediaMap = {};
   for (const slot of version.spec.mediaSlots) {
@@ -350,6 +537,13 @@ export function mediaMapFor(version: EditVersion, clips: Clip[]): MediaMap {
       offsetY: 0,
       muted: true,
     };
+  }
+  const logoSpec = version.spec.logo;
+  if (logoSpec && logoId) {
+    const url = cachedUrl(logoId);
+    if (url) {
+      map[logoSpec.mediaKey] = { url, kind: "image", name: "Logo", fit: "contain" };
+    }
   }
   return map;
 }

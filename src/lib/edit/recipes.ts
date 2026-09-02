@@ -1,4 +1,4 @@
-import type { OverlayType, Transition } from "@/lib/template/types";
+import type { OverlayType } from "@/lib/template/types";
 import type { ShotType } from "@/lib/footage/types";
 import { SIMPLE_STYLES } from "@/lib/template/simplestyles";
 
@@ -6,7 +6,7 @@ import { SIMPLE_STYLES } from "@/lib/template/simplestyles";
  * EDITING RECIPES
  *
  * A style is just a set of rules for how to lay footage against music. They
- * reuse the existing template vocabulary (layouts, transitions, overlays) and
+ * reuse the existing template vocabulary (layouts, textures) and
  * the Simple Style presets already in the app.
  */
 export interface EditRecipe {
@@ -23,7 +23,8 @@ export interface EditRecipe {
   beatSync: number;
   /** preferred shot type running order, cycled and stretched to fit */
   sequence: ShotType[];
-  transitions: Transition[];
+  /** how many shots Tempo likes to stay inside one scene before moving on */
+  sceneRun: number;
   overlays: OverlayType[];
   /** chance a shot uses a non-full layout */
   layoutChance: number;
@@ -36,13 +37,13 @@ export const BUILT_IN_RECIPES: EditRecipe[] = [
   {
     key: "clean",
     name: "Clean",
-    blurb: "Even pacing, hard cuts, footage front and centre.",
+    blurb: "Even pacing, clean hard cuts, footage front and centre.",
     simpleStyleKey: "clean",
     avgShot: 1.5,
     accelerate: 0.15,
     beatSync: 0.55,
     sequence: ["hero", "product", "detail", "lifestyle", "product", "detail"],
-    transitions: ["hard_cut", "hard_cut", "hard_cut", "flash"],
+    sceneRun: 2,
     overlays: ["vignette"],
     layoutChance: 0.05,
     endingHold: 1.35,
@@ -56,7 +57,7 @@ export const BUILT_IN_RECIPES: EditRecipe[] = [
     accelerate: 0.25,
     beatSync: 0.4,
     sequence: ["environment", "detail", "hero", "lifestyle", "detail", "product"],
-    transitions: ["hard_cut", "blur", "hard_cut", "mask_wipe", "hard_cut"],
+    sceneRun: 3,
     overlays: ["frame_line", "grain", "paper"],
     layoutChance: 0.22,
     endingHold: 1.5,
@@ -64,13 +65,13 @@ export const BUILT_IN_RECIPES: EditRecipe[] = [
   {
     key: "fast_product",
     name: "Fast Product",
-    blurb: "Rapid cuts, punchy transitions, product every few frames.",
+    blurb: "Rapid hard cuts, product every few frames.",
     simpleStyleKey: "high_energy",
     avgShot: 0.75,
     accelerate: 0.45,
     beatSync: 0.85,
     sequence: ["hero", "product", "detail", "action", "product", "lifestyle", "detail", "hero"],
-    transitions: ["hard_cut", "whip", "punch_zoom", "flash", "hard_cut", "snap_zoom_out"],
+    sceneRun: 2,
     overlays: ["flash", "chromatic"],
     layoutChance: 0.14,
     endingHold: 1.1,
@@ -84,7 +85,7 @@ export const BUILT_IN_RECIPES: EditRecipe[] = [
     accelerate: 0.2,
     beatSync: 0.35,
     sequence: ["environment", "lifestyle", "detail", "lifestyle", "action", "hero"],
-    transitions: ["hard_cut", "film_splice", "hard_cut", "blur"],
+    sceneRun: 3,
     overlays: ["grain", "halation", "light_leak", "film_border"],
     layoutChance: 0.05,
     endingHold: 1.7,
@@ -98,7 +99,7 @@ export const BUILT_IN_RECIPES: EditRecipe[] = [
     accelerate: 0.3,
     beatSync: 0.6,
     sequence: ["action", "lifestyle", "detail", "environment", "hero", "action"],
-    transitions: ["film_splice", "hard_cut", "rgb_split", "hard_cut", "smear"],
+    sceneRun: 2,
     overlays: ["camcorder", "timestamp", "noise", "grain"],
     layoutChance: 0.08,
     endingHold: 1.2,
@@ -112,7 +113,7 @@ export const BUILT_IN_RECIPES: EditRecipe[] = [
     accelerate: 0.3,
     beatSync: 0.5,
     sequence: ["lifestyle", "environment", "detail", "action", "lifestyle", "hero"],
-    transitions: ["hard_cut", "blur", "hard_cut", "directional_blur"],
+    sceneRun: 3,
     overlays: ["vignette", "bloom"],
     layoutChance: 0.1,
     endingHold: 1.5,

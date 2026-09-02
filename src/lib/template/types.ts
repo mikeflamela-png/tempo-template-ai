@@ -359,6 +359,18 @@ export interface TemplateSpec {
   motionSlotPlan?: Record<string, string>;
   /** structural blueprint this spec was built on */
   blueprintId?: string;
+  /** simple project logo placement */
+  logo?: LogoSpec;
+}
+
+/** A user-uploaded transparent logo placed over the edit. */
+export interface LogoSpec {
+  /** key into the MediaMap holding the logo image */
+  mediaKey: string;
+  position: "center" | "top-left" | "top-right" | "bottom-left" | "bottom-right";
+  scale: number;
+  /** when the logo is on screen */
+  appearances: { start: number; duration: number; hero?: boolean }[];
 }
 
 

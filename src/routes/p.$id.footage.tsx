@@ -1,14 +1,20 @@
 import { createFileRoute, Link, useParams } from "@tanstack/react-router";
 import { useMemo, useRef, useState } from "react";
-import { Film, Clapperboard, Heart, Loader2, Scissors, Trash2, X, Merge } from "lucide-react";
+import { Check, Film, Clapperboard, Group, Heart, Loader2, Scissors, Trash2, X, Merge } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import ClipVideo from "@/components/selects/ClipVideo";
 import StarRating from "@/components/selects/StarRating";
 import TrimBar from "@/components/selects/TrimBar";
 import {
+  addToScene,
   deleteClip,
+  groupAsScene,
   mergeWithNext,
+  projectScenes,
+  removeFromScene,
+  renameScene,
+  ungroupScene,
   projectById,
   projectClips,
   splitClip,
@@ -16,6 +22,7 @@ import {
   updateClips,
   useFootage,
 } from "@/lib/footage/store";
+import { suggestScenes, type SceneSuggestion } from "@/lib/footage/scenes";
 import { ingestClipFiles, ingestStringout, type IngestProgress } from "@/lib/footage/ingest";
 import { SHOT_TYPES, SHOT_TYPE_LABEL, type Clip, type ShotType } from "@/lib/footage/types";
 
@@ -83,8 +90,26 @@ function FootagePage() {
   const [sort, setSort] = useState<(typeof SORTS)[number]["key"]>("order");
   const [selected, setSelected] = useState<string[]>([]);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [suggestions, setSuggestions] = useState<SceneSuggestion[]>([]);
+  const [suggesting, setSuggesting] = useState(false);
   const stringoutInput = useRef<HTMLInputElement>(null);
   const clipsInput = useRef<HTMLInputElement>(null);
+  const scenes = projectScenes(id);
+
+  const toggleSelect = (clipId: string) =>
+    setSelected((s) => (s.includes(clipId) ? s.filter((x) => x !== clipId) : [...s, clipId]));
+
+  const runSuggestions = async () => {
+    setSuggesting(true);
+    try {
+      const found = await suggestScenes(clips);
+      setSuggestions(found);
+      if (!found.length) toast.info("No obvious scene groups found — group them manually.");
+    } finally {
+      setSuggesting(false);
+    }
+  };
+
 
   const shown = useMemo(() => {
     const list = clips.filter((c) => matches(c, filter));
@@ -254,6 +279,44 @@ function FootagePage() {
                 ))}
               </select>
               <button
+                onClick={() => {
+                  const name = window.prompt("Name this scene (optional)", "") ?? "";
+                  const scene = groupAsScene(id, selected, name);
+                  setSelected([]);
+                  toast.success(`${scene.name} created`);
+                }}
+                className="flex items-center gap-1 rounded-full border border-primary/60 px-3 py-1 text-[11px] uppercase tracking-widest text-primary"
+              >
+                <Group className="size-3" /> Group as scene
+              </button>
+              {scenes.length > 0 && (
+                <select
+                  onChange={(e) => {
+                    if (!e.target.value) return;
+                    addToScene(e.target.value, selected);
+                    setSelected([]);
+                  }}
+                  defaultValue=""
+                  className="rounded-full border border-border bg-transparent px-3 py-1 text-[11px] uppercase tracking-widest text-muted-foreground"
+                >
+                  <option value="">Add to scene…</option>
+                  {scenes.map((s) => (
+                    <option key={s.id} value={s.id} className="bg-background">
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <button
+                onClick={() => {
+                  removeFromScene(selected);
+                  setSelected([]);
+                }}
+                className="text-[11px] uppercase tracking-widest text-muted-foreground hover:text-foreground"
+              >
+                Remove from scene
+              </button>
+              <button
                 onClick={() => setSelected([])}
                 className="ml-auto text-xs uppercase tracking-widest text-muted-foreground hover:text-foreground"
               >
@@ -261,6 +324,99 @@ function FootagePage() {
               </button>
             </div>
           )}
+
+          {/* -------------------------------------------------- scene groups */}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[10px] uppercase tracking-[0.25em] text-muted-foreground">
+              Scenes
+            </span>
+            {scenes.map((s) => {
+              const members = clips.filter((c) => c.sceneId === s.id);
+              return (
+                <span
+                  key={s.id}
+                  className="flex items-center gap-2 rounded-full border border-border bg-card/50 px-3 py-1 text-[11px]"
+                >
+                  <button
+                    onClick={() => setSelected(members.map((m) => m.id))}
+                    className="hover:text-primary"
+                  >
+                    {s.name} · {members.length}
+                  </button>
+                  <button
+                    onClick={() => {
+                      const name = window.prompt("Rename scene", s.name);
+                      if (name) renameScene(s.id, name);
+                    }}
+                    className="text-muted-foreground hover:text-foreground"
+                  >
+                    Rename
+                  </button>
+                  <button
+                    onClick={() => ungroupScene(s.id)}
+                    className="text-muted-foreground hover:text-destructive"
+                  >
+                    Ungroup
+                  </button>
+                </span>
+              );
+            })}
+            {!scenes.length && (
+              <span className="text-[11px] text-muted-foreground">
+                Select clips, then Group as scene.
+              </span>
+            )}
+            <button
+              onClick={() => void runSuggestions()}
+              disabled={suggesting}
+              className="ml-auto text-[11px] uppercase tracking-widest text-muted-foreground hover:text-foreground"
+            >
+              {suggesting ? "Looking…" : "Suggest scenes"}
+            </button>
+          </div>
+
+          {suggestions.length > 0 && (
+            <div className="space-y-2 rounded-xl border border-dashed border-primary/40 p-3">
+              {suggestions.map((sg) => {
+                const members = clips.filter((c) => sg.clipIds.includes(c.id));
+                return (
+                  <div key={sg.id} className="flex items-center gap-3">
+                    <div className="flex gap-1">
+                      {members.slice(0, 6).map((m) =>
+                        m.thumb ? (
+                          <img
+                            key={m.id}
+                            src={m.thumb}
+                            alt={m.name}
+                            className="h-8 w-12 rounded object-cover"
+                          />
+                        ) : null,
+                      )}
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">
+                      Suggested scene · {members.length} clips
+                    </p>
+                    <button
+                      onClick={() => {
+                        groupAsScene(id, sg.clipIds);
+                        setSuggestions((s) => s.filter((x) => x.id !== sg.id));
+                      }}
+                      className="ml-auto rounded-full border border-primary/60 px-3 py-1 text-[11px] uppercase tracking-widest text-primary"
+                    >
+                      Accept
+                    </button>
+                    <button
+                      onClick={() => setSuggestions((s) => s.filter((x) => x.id !== sg.id))}
+                      className="text-[11px] uppercase tracking-widest text-muted-foreground hover:text-foreground"
+                    >
+                      Ignore
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
 
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
             {shown.map((c) => {
@@ -283,9 +439,29 @@ function FootagePage() {
                     {c.thumb ? (
                       <img src={c.thumb} alt={c.name} loading="lazy" className="size-full object-cover" />
                     ) : null}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleSelect(c.id);
+                      }}
+                      aria-label={isSel ? "Deselect clip" : "Select clip"}
+                      className={`absolute right-1 top-1 flex size-5 items-center justify-center rounded-full border transition-opacity ${
+                        isSel
+                          ? "border-primary bg-primary text-primary-foreground"
+                          : "border-border bg-background/70 opacity-0 group-hover:opacity-100"
+                      }`}
+                    >
+                      <Check className="size-3" />
+                    </button>
+                    {c.sceneId && (
+                      <span className="absolute bottom-1 left-1 max-w-[70%] truncate rounded bg-primary/80 px-1 text-[9px] uppercase tracking-widest text-primary-foreground">
+                        {scenes.find((s) => s.id === c.sceneId)?.name ?? "Scene"}
+                      </span>
+                    )}
                     <span className="absolute bottom-1 right-1 rounded bg-background/80 px-1 font-mono text-[10px]">
                       {(c.out - c.in).toFixed(1)}s
                     </span>
+
                     {c.favorite && (
                       <Heart className="absolute left-1 top-1 size-3.5 fill-primary text-primary" />
                     )}
