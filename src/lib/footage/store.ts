@@ -118,7 +118,17 @@ export const DEFAULT_SETTINGS: MakeSettings = {
   styleKey: "clean",
   effects: "light",
   count: 5,
+  logo: { mode: "none", position: "center", scale: 1 },
+  text: {
+    opening: "",
+    middle: "",
+    closing: "",
+    style: "minimal",
+    placement: "bottom",
+    fontKey: "inter",
+  },
 };
+
 
 export function createProject(name: string, kind: Project["kind"]): Project {
   const p: Project = {
