@@ -6,7 +6,7 @@ import { SIMPLE_STYLES } from "@/lib/template/simplestyles";
  * EDITING RECIPES
  *
  * A style is just a set of rules for how to lay footage against music. They
- * reuse the existing template vocabulary (layouts, transitions, overlays) and
+ * reuse the existing template vocabulary (layouts, textures) and
  * the Simple Style presets already in the app.
  */
 export interface EditRecipe {
@@ -37,7 +37,7 @@ export const BUILT_IN_RECIPES: EditRecipe[] = [
   {
     key: "clean",
     name: "Clean",
-    blurb: "Even pacing, hard cuts, footage front and centre.",
+    blurb: "Even pacing, clean hard cuts, footage front and centre.",
     simpleStyleKey: "clean",
     avgShot: 1.5,
     accelerate: 0.15,
@@ -65,7 +65,7 @@ export const BUILT_IN_RECIPES: EditRecipe[] = [
   {
     key: "fast_product",
     name: "Fast Product",
-    blurb: "Rapid cuts, punchy transitions, product every few frames.",
+    blurb: "Rapid hard cuts, product every few frames.",
     simpleStyleKey: "high_energy",
     avgShot: 0.75,
     accelerate: 0.45,
