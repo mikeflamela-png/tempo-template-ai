@@ -79,7 +79,9 @@ export function hydrateFootage() {
           projects: mergeById(parsed.projects ?? [], state.projects),
           sources: mergeById(parsed.sources ?? [], state.sources),
           clips: mergeById(parsed.clips ?? [], state.clips),
+          scenes: mergeById(parsed.scenes ?? [], state.scenes),
           ready: true,
+
         };
       } else {
         state = { ...state, ready: true };
