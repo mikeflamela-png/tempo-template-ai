@@ -125,7 +125,7 @@ export const DEFAULT_SETTINGS: MakeSettings = {
     closing: "",
     style: "minimal",
     placement: "bottom",
-    fontKey: "inter",
+    fontKey: "inter-tight",
   },
 };
 
