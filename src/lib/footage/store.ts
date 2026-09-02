@@ -46,7 +46,9 @@ function persist() {
       projects: state.projects,
       sources: state.sources,
       clips: state.clips,
+      scenes: state.scenes,
     });
+
     void putMedia(STATE_KEY, new Blob([payload], { type: "application/json" })).catch(() => {});
   }, 300);
 }
