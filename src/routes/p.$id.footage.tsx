@@ -439,9 +439,29 @@ function FootagePage() {
                     {c.thumb ? (
                       <img src={c.thumb} alt={c.name} loading="lazy" className="size-full object-cover" />
                     ) : null}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleSelect(c.id);
+                      }}
+                      aria-label={isSel ? "Deselect clip" : "Select clip"}
+                      className={`absolute right-1 top-1 flex size-5 items-center justify-center rounded-full border transition-opacity ${
+                        isSel
+                          ? "border-primary bg-primary text-primary-foreground"
+                          : "border-border bg-background/70 opacity-0 group-hover:opacity-100"
+                      }`}
+                    >
+                      <Check className="size-3" />
+                    </button>
+                    {c.sceneId && (
+                      <span className="absolute bottom-1 left-1 max-w-[70%] truncate rounded bg-primary/80 px-1 text-[9px] uppercase tracking-widest text-primary-foreground">
+                        {scenes.find((s) => s.id === c.sceneId)?.name ?? "Scene"}
+                      </span>
+                    )}
                     <span className="absolute bottom-1 right-1 rounded bg-background/80 px-1 font-mono text-[10px]">
                       {(c.out - c.in).toFixed(1)}s
                     </span>
+
                     {c.favorite && (
                       <Heart className="absolute left-1 top-1 size-3.5 fill-primary text-primary" />
                     )}
