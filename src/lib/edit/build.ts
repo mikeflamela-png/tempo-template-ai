@@ -499,6 +499,7 @@ export function buildVersions(
   clips: Clip[],
   settings: MakeSettings,
   beatMap: BeatMap | null,
+  opts: BuildOptions = {},
 ): EditVersion[] {
   const stamp = Date.now();
   return Array.from({ length: settings.count }, (_, i) => {
@@ -509,6 +510,7 @@ export function buildVersions(
       beatMap,
       seed,
       `Version ${i + 1}`,
+      opts,
     );
     return {
       id: `v-${stamp.toString(36)}-${i}`,
@@ -525,7 +527,9 @@ export function buildVersions(
 
 /* ---------------------------------------------------------- media mapping */
 
-export function mediaMapFor(version: EditVersion, clips: Clip[]): MediaMap {
+export const LOGO_KEY = "logo";
+
+export function mediaMapFor(version: EditVersion, clips: Clip[], logoId?: string | null): MediaMap {
   const byId = new Map(clips.map((c) => [c.id, c]));
   const map: MediaMap = {};
   for (const slot of version.spec.mediaSlots) {
@@ -543,6 +547,13 @@ export function mediaMapFor(version: EditVersion, clips: Clip[]): MediaMap {
       offsetY: 0,
       muted: true,
     };
+  }
+  const logoSpec = version.spec.logo;
+  if (logoSpec && logoId) {
+    const url = cachedUrl(logoId);
+    if (url) {
+      map[logoSpec.mediaKey] = { url, kind: "image", name: "Logo", fit: "contain" };
+    }
   }
   return map;
 }
