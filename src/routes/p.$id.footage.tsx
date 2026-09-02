@@ -90,8 +90,26 @@ function FootagePage() {
   const [sort, setSort] = useState<(typeof SORTS)[number]["key"]>("order");
   const [selected, setSelected] = useState<string[]>([]);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [suggestions, setSuggestions] = useState<SceneSuggestion[]>([]);
+  const [suggesting, setSuggesting] = useState(false);
   const stringoutInput = useRef<HTMLInputElement>(null);
   const clipsInput = useRef<HTMLInputElement>(null);
+  const scenes = projectScenes(id);
+
+  const toggleSelect = (clipId: string) =>
+    setSelected((s) => (s.includes(clipId) ? s.filter((x) => x !== clipId) : [...s, clipId]));
+
+  const runSuggestions = async () => {
+    setSuggesting(true);
+    try {
+      const found = await suggestScenes(clips);
+      setSuggestions(found);
+      if (!found.length) toast.info("No obvious scene groups found — group them manually.");
+    } finally {
+      setSuggesting(false);
+    }
+  };
+
 
   const shown = useMemo(() => {
     const list = clips.filter((c) => matches(c, filter));
