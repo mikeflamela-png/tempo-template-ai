@@ -100,7 +100,9 @@ function FootagePage() {
 
   const runStringout = async (file: File) => {
     try {
-      const made = await ingestStringout(id, file, setProgress);
+      console.log("ingest start", file.name, file.size);
+      const made = await ingestStringout(id, file, (pr) => { console.log("ingest", pr.stage, pr.label, pr.fraction); setProgress(pr); });
+      console.log("ingest done", made.length);
       toast.success(`Detected ${made.length} shots`);
     } catch (e) {
       console.error("stringout ingest failed", e);
