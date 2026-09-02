@@ -1,17 +1,25 @@
 import type {
-  Animation,
   BeatMap,
   MediaMap,
   MediaSlot,
   Overlay,
+  OverlayType,
   Purpose,
   TemplateSpec,
-  Transition,
+  TextSlot,
 } from "@/lib/template/types";
-import type { Clip, EditVersion, MakeSettings, ShotType } from "@/lib/footage/types";
+import type {
+  Clip,
+  EditVersion,
+  MakeSettings,
+  Scene,
+  ShotType,
+  TextSettings,
+} from "@/lib/footage/types";
 import { FORMATS, clipLength } from "@/lib/footage/types";
 import { cachedUrl } from "@/lib/footage/db";
 import { recipeByKey, simpleStyleFor, type EditRecipe } from "./recipes";
+
 
 /* ------------------------------------------------------------------ rng */
 
