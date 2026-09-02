@@ -271,6 +271,168 @@ function MakePage() {
       </section>
 
       <section>
+        <p className="text-[10px] uppercase tracking-[0.25em] text-muted-foreground">Logo</p>
+        <input
+          ref={logoInput}
+          type="file"
+          accept="image/png,image/svg+xml,image/webp"
+          hidden
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            e.target.value = "";
+            if (f) void onLogo(f);
+          }}
+        />
+        <div className="mt-3 flex flex-wrap items-center gap-4 rounded-xl border border-border bg-card/40 p-4">
+          <Button variant="outline" onClick={() => logoInput.current?.click()}>
+            <ImageIcon className="mr-2 size-4" />
+            {project?.logo ? "Replace logo" : "Upload logo"}
+          </Button>
+          {project?.logo ? (
+            <div className="flex min-w-0 flex-1 items-center gap-3">
+              {cachedUrl(project.logo.id) ? (
+                <img
+                  src={cachedUrl(project.logo.id)!}
+                  alt="Project logo"
+                  className="h-8 w-auto max-w-24 object-contain"
+                />
+              ) : null}
+              <p className="truncate text-xs text-muted-foreground">{project.logo.name}</p>
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">Transparent PNG or SVG.</p>
+          )}
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {(["none", "intro", "outro", "both", "watermark"] as LogoMode[]).map((m) => (
+            <button
+              key={m}
+              onClick={() => patchLogo({ mode: m })}
+              className={`rounded-xl border px-5 py-3 text-xs uppercase tracking-widest ${
+                logo.mode === m
+                  ? "border-primary bg-primary/10"
+                  : "border-border text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {m === "both" ? "Intro + Outro" : m}
+            </button>
+          ))}
+        </div>
+        {logo.mode === "watermark" && (
+          <div className="mt-2 flex flex-wrap gap-2">
+            {(
+              ["top-left", "top-right", "bottom-left", "bottom-right"] as LogoPosition[]
+            ).map((p) => (
+              <button
+                key={p}
+                onClick={() => patchLogo({ position: p })}
+                className={`rounded-lg border px-3 py-2 text-[11px] ${
+                  logo.position === p
+                    ? "border-primary bg-primary/10"
+                    : "border-border text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {p.replace("-", " ")}
+              </button>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section>
+        <p className="text-[10px] uppercase tracking-[0.25em] text-muted-foreground">Text</p>
+        <div className="mt-3 grid gap-2 sm:grid-cols-3">
+          {(
+            [
+              ["opening", "Opening text"],
+              ["middle", "Middle text"],
+              ["closing", "Closing text"],
+            ] as const
+          ).map(([key, label]) => (
+            <input
+              key={key}
+              value={text[key]}
+              placeholder={label}
+              onChange={(e) => patchText({ [key]: e.target.value } as Partial<TextSettings>)}
+              className="rounded-xl border border-border bg-card/40 px-4 py-3 text-sm outline-none focus:border-primary"
+            />
+          ))}
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {(["minimal", "editorial", "bold", "caption"] as TextStyleKey[]).map((s) => (
+            <button
+              key={s}
+              onClick={() => patchText({ style: s })}
+              className={`rounded-xl border px-5 py-3 text-xs uppercase tracking-widest ${
+                text.style === s
+                  ? "border-primary bg-primary/10"
+                  : "border-border text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {s}
+            </button>
+          ))}
+          <span className="mx-2 self-center text-[10px] uppercase tracking-widest text-muted-foreground">
+            Placement
+          </span>
+          {(["top", "center", "bottom"] as TextPlacement[]).map((p) => (
+            <button
+              key={p}
+              onClick={() => patchText({ placement: p })}
+              className={`rounded-xl border px-5 py-3 text-xs uppercase tracking-widest ${
+                text.placement === p
+                  ? "border-primary bg-primary/10"
+                  : "border-border text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {p}
+            </button>
+          ))}
+        </div>
+        <input
+          ref={fontInput}
+          type="file"
+          accept=".ttf,.otf,.woff,.woff2,font/*"
+          hidden
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            e.target.value = "";
+            if (f) void onFont(f);
+          }}
+        />
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <select
+            value={text.fontKey}
+            onChange={(e) => patchText({ fontKey: e.target.value })}
+            className="rounded-xl border border-border bg-card/40 px-4 py-3 text-sm outline-none"
+          >
+            {uploadedFonts.length ? (
+              <optgroup label="Your fonts">
+                {uploadedFonts.map((f) => (
+                  <option key={f.key} value={f.key}>
+                    {f.name}
+                  </option>
+                ))}
+              </optgroup>
+            ) : null}
+            <optgroup label="Library">
+              {FONTS.map((f) => (
+                <option key={f.key} value={f.key}>
+                  {f.name}
+                </option>
+              ))}
+            </optgroup>
+          </select>
+          <Button variant="ghost" size="sm" onClick={() => fontInput.current?.click()}>
+            <TypeIcon className="mr-2 size-4" />
+            Upload font
+          </Button>
+        </div>
+      </section>
+
+
+
+      <section>
         <p className="text-[10px] uppercase tracking-[0.25em] text-muted-foreground">Effects</p>
         <div className="mt-3 flex gap-2">
           {(["none", "light", "medium"] as EffectLevel[]).map((e) => (
