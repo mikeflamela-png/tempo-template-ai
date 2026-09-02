@@ -250,29 +250,19 @@ const PURPOSE_BY_TYPE: Record<ShotType, Purpose> = {
 const LAYOUT_POOL = ["split-left", "split-right", "band", "inset", "diag-left", "strip-2"] as const;
 
 
-function overlaysFor(recipe: EditRecipe, level: MakeSettings["effects"], total: number, rand: () => number): Overlay[] {
+function overlaysFor(recipe: EditRecipe, level: MakeSettings["effects"], total: number, _rand: () => number): Overlay[] {
   if (level === "none") return [];
-  const density = level === "light" ? 0.35 : 0.8;
   const out: Overlay[] = [];
-  // continuous texture overlays run the whole edit
+  // Clean cuts only: continuous film/paper textures are allowed, but no flashes,
+  // blurs or other transition-like accents are ever generated automatically.
   const textures = recipe.overlays.filter((o) =>
     ["grain", "vignette", "film_border", "paper", "noise", "camcorder", "halation", "bloom"].includes(o),
   );
-  const hits = recipe.overlays.filter((o) => !textures.includes(o));
   const keepTextures = level === "light" ? textures.slice(0, 1) : textures.slice(0, 3);
   for (const t of keepTextures) out.push({ type: t, start: 0, duration: total });
-  const hitCount = Math.round(total * density * 0.25);
-  for (let i = 0; i < hitCount && hits.length; i++) {
-    const type = hits[Math.floor(rand() * hits.length)]!;
-    out.push({
-      type,
-      start: Number((rand() * Math.max(0.1, total - 0.5)).toFixed(2)),
-      duration: 0.25,
-      accent: true,
-    });
-  }
   return out;
 }
+
 
 export interface BuildResult {
   spec: TemplateSpec;
