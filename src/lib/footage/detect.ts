@@ -21,13 +21,15 @@ interface Sample {
   sig: Float32Array;
 }
 
+/** Tiny RGB signature — colour beats luma, two shots can share brightness. */
 function signature(ctx: CanvasRenderingContext2D): Float32Array {
   const { data } = ctx.getImageData(0, 0, GW, GH);
-  const out = new Float32Array(GW * GH);
-  for (let i = 0; i < out.length; i++) {
+  const out = new Float32Array(GW * GH * 3);
+  for (let i = 0; i < GW * GH; i++) {
     const p = i * 4;
-    out[i] =
-      ((data[p] ?? 0) * 0.299 + (data[p + 1] ?? 0) * 0.587 + (data[p + 2] ?? 0) * 0.114) / 255;
+    out[i * 3] = (data[p] ?? 0) / 255;
+    out[i * 3 + 1] = (data[p + 1] ?? 0) / 255;
+    out[i * 3 + 2] = (data[p + 2] ?? 0) / 255;
   }
   return out;
 }
@@ -36,6 +38,12 @@ function delta(a: Float32Array, b: Float32Array) {
   let sum = 0;
   for (let i = 0; i < a.length; i++) sum += Math.abs((a[i] ?? 0) - (b[i] ?? 0));
   return sum / a.length;
+}
+
+function median(values: number[]) {
+  const s = [...values].sort((x, y) => x - y);
+  const mid = Math.floor(s.length / 2);
+  return s.length % 2 ? s[mid]! : ((s[mid - 1]! + s[mid]!) / 2);
 }
 
 export async function loadVideo(url: string): Promise<HTMLVideoElement> {
@@ -178,10 +186,11 @@ export async function detectCuts(url: string, opts: DetectOptions = {}): Promise
   if (!deltas.length) return { cuts: [], duration };
 
   const values = deltas.map((x) => x.d);
-  const mean = values.reduce((a, b) => a + b, 0) / values.length;
-  const sd = Math.sqrt(values.reduce((a, b) => a + (b - mean) ** 2, 0) / values.length);
-  // sensitivity 0 -> 4 sigma, 1 -> 1.2 sigma
-  const threshold = Math.max(0.045, mean + sd * (4 - sensitivity * 2.8));
+  // Robust statistics: the cuts themselves would inflate a mean/σ threshold.
+  const med = median(values);
+  const mad = median(values.map((v) => Math.abs(v - med))) || 0.004;
+  // sensitivity 0 -> 10 MAD, 1 -> 2 MAD
+  const threshold = Math.max(0.03, med + mad * (10 - sensitivity * 8));
 
   const cuts: number[] = [];
   let lastCut = 0;

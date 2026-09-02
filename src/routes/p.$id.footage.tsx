@@ -103,6 +103,7 @@ function FootagePage() {
       const made = await ingestStringout(id, file, setProgress);
       toast.success(`Detected ${made.length} shots`);
     } catch (e) {
+      console.error("stringout ingest failed", e);
       toast.error(e instanceof Error ? e.message : "Could not process that video");
     } finally {
       setProgress(null);
@@ -114,6 +115,7 @@ function FootagePage() {
       const made = await ingestClipFiles(id, files, setProgress);
       toast.success(`Added ${made.length} clips`);
     } catch (e) {
+      console.error("clip ingest failed", e);
       toast.error(e instanceof Error ? e.message : "Could not add those clips");
     } finally {
       setProgress(null);
