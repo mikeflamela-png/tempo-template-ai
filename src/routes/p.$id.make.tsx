@@ -1,21 +1,36 @@
 import { createFileRoute, Link, useNavigate, useParams } from "@tanstack/react-router";
 import { useMemo, useRef, useState } from "react";
-import { Loader2, Music, Sparkles } from "lucide-react";
+import { ImageIcon, Loader2, Music, Sparkles, Type as TypeIcon } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { analyseAudio } from "@/lib/audio/beatmap";
-import { putMedia, mediaUrl } from "@/lib/footage/db";
+import { putMedia, mediaUrl, cachedUrl } from "@/lib/footage/db";
 import {
   DEFAULT_SETTINGS,
   projectById,
   projectClips,
+  projectScenes,
   saveVersions,
+  setLogo,
   setMusic,
   useFootage,
 } from "@/lib/footage/store";
-import { FORMATS, type EffectLevel, type FormatKey, type MakeSettings } from "@/lib/footage/types";
-import { buildVersions } from "@/lib/edit/build";
+import {
+  FORMATS,
+  type EffectLevel,
+  type FormatKey,
+  type LogoMode,
+  type LogoPosition,
+  type MakeSettings,
+  type TextPlacement,
+  type TextSettings,
+  type TextStyleKey,
+} from "@/lib/footage/types";
+import { addUploadedFont, useUploadedFonts } from "@/lib/footage/fonts";
+import { FONTS } from "@/lib/template/fonts";
+import { LOGO_KEY, buildVersions } from "@/lib/edit/build";
 import { allRecipes, recipeByKey, saveRecipe } from "@/lib/edit/recipes";
+
 
 export const Route = createFileRoute("/p/$id/make")({
   head: () => ({
