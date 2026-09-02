@@ -54,7 +54,9 @@ function MakePage() {
   const navigate = useNavigate();
   const project = projectById(id);
   const clips = projectClips(id);
+  const scenes = projectScenes(id);
   const usable = clips.filter((c) => !c.rejected);
+  const uploadedFonts = useUploadedFonts();
 
   const [settings, setSettings] = useState<MakeSettings>(
     project?.lastSettings ?? DEFAULT_SETTINGS,
@@ -63,9 +65,35 @@ function MakePage() {
   const [working, setWorking] = useState(false);
   const [custom, setCustom] = useState("");
   const audioInput = useRef<HTMLInputElement>(null);
+  const logoInput = useRef<HTMLInputElement>(null);
+  const fontInput = useRef<HTMLInputElement>(null);
   const recipes = useMemo(() => allRecipes(), []);
 
+  const logo = settings.logo ?? DEFAULT_SETTINGS.logo!;
+  const text: TextSettings = settings.text ?? DEFAULT_SETTINGS.text!;
+
   const patch = (p: Partial<MakeSettings>) => setSettings((s) => ({ ...s, ...p }));
+  const patchLogo = (p: Partial<typeof logo>) => patch({ logo: { ...logo, ...p } });
+  const patchText = (p: Partial<TextSettings>) => patch({ text: { ...text, ...p } });
+
+  const onLogo = async (file: File) => {
+    const logoId = `logo-${Date.now().toString(36)}`;
+    await putMedia(logoId, file);
+    await mediaUrl(logoId);
+    setLogo(id, { id: logoId, name: file.name, mime: file.type });
+    if (logo.mode === "none") patchLogo({ mode: "outro" });
+    toast.success("Logo added");
+  };
+
+  const onFont = async (file: File) => {
+    try {
+      const font = await addUploadedFont(file);
+      patchText({ fontKey: font.key });
+      toast.success(`${font.name} ready`);
+    } catch {
+      toast.error("Could not load that font file");
+    }
+  };
 
   const onAudio = async (file: File) => {
     setAnalysing(true);
@@ -88,6 +116,7 @@ function MakePage() {
       setAnalysing(false);
     }
   };
+
 
   const generate = () => {
     if (!usable.length) {
