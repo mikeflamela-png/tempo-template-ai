@@ -241,8 +241,14 @@ const PURPOSE_BY_TYPE: Record<ShotType, Purpose> = {
   other: "detail",
 };
 
-const IN_ANIMATIONS: Animation[] = ["slow_push_in", "push_in", "punch_in", "drift", "pan_left"];
+/**
+ * CLEAN CUTS ONLY. Tempo never generates dissolves, fades, zoom/blur/whip
+ * transitions or fake camera moves — every shot change is a hard cut. The only
+ * things that may sit between shots are motion graphics the user uploaded
+ * themselves (handled by the motion asset layer, untouched here).
+ */
 const LAYOUT_POOL = ["split-left", "split-right", "band", "inset", "diag-left", "strip-2"] as const;
+
 
 function overlaysFor(recipe: EditRecipe, level: MakeSettings["effects"], total: number, rand: () => number): Overlay[] {
   if (level === "none") return [];
