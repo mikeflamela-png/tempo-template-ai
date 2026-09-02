@@ -21,6 +21,7 @@ import { Route as ApiPublicRenderRouteImport } from './routes/api/public/render'
 import { Route as ApiPublicRenderHealthRouteImport } from './routes/api/public/render-health'
 import { Route as PIdFootageRouteImport } from './routes/p.$id.footage'
 import { Route as PIdMakeRouteImport } from './routes/p.$id.make'
+import { Route as PIdResultsRouteImport } from './routes/p.$id.results'
 import { Route as PIdSelectsRouteImport } from './routes/p.$id.selects'
 import { Route as ApiPublicRenderDownloadIdRouteImport } from './routes/api/public/render-download.$id'
 import { Route as ApiPublicRenderStatusIdRouteImport } from './routes/api/public/render-status.$id'
@@ -85,6 +86,11 @@ const PIdMakeRoute = PIdMakeRouteImport.update({
   path: '/make',
   getParentRoute: () => PIdRoute,
 } as any)
+const PIdResultsRoute = PIdResultsRouteImport.update({
+  id: '/results',
+  path: '/results',
+  getParentRoute: () => PIdRoute,
+} as any)
 const PIdSelectsRoute = PIdSelectsRouteImport.update({
   id: '/selects',
   path: '/selects',
@@ -115,6 +121,7 @@ export interface FileRoutesByFullPath {
   '/api/public/render-health': typeof ApiPublicRenderHealthRoute
   '/p/$id/footage': typeof PIdFootageRoute
   '/p/$id/make': typeof PIdMakeRoute
+  '/p/$id/results': typeof PIdResultsRoute
   '/p/$id/selects': typeof PIdSelectsRoute
   '/api/public/render-download/$id': typeof ApiPublicRenderDownloadIdRoute
   '/api/public/render-status/$id': typeof ApiPublicRenderStatusIdRoute
@@ -132,6 +139,7 @@ export interface FileRoutesByTo {
   '/api/public/render-health': typeof ApiPublicRenderHealthRoute
   '/p/$id/footage': typeof PIdFootageRoute
   '/p/$id/make': typeof PIdMakeRoute
+  '/p/$id/results': typeof PIdResultsRoute
   '/p/$id/selects': typeof PIdSelectsRoute
   '/api/public/render-download/$id': typeof ApiPublicRenderDownloadIdRoute
   '/api/public/render-status/$id': typeof ApiPublicRenderStatusIdRoute
@@ -150,6 +158,7 @@ export interface FileRoutesById {
   '/api/public/render-health': typeof ApiPublicRenderHealthRoute
   '/p/$id/footage': typeof PIdFootageRoute
   '/p/$id/make': typeof PIdMakeRoute
+  '/p/$id/results': typeof PIdResultsRoute
   '/p/$id/selects': typeof PIdSelectsRoute
   '/api/public/render-download/$id': typeof ApiPublicRenderDownloadIdRoute
   '/api/public/render-status/$id': typeof ApiPublicRenderStatusIdRoute
@@ -169,6 +178,7 @@ export interface FileRouteTypes {
     | '/api/public/render-health'
     | '/p/$id/footage'
     | '/p/$id/make'
+    | '/p/$id/results'
     | '/p/$id/selects'
     | '/api/public/render-download/$id'
     | '/api/public/render-status/$id'
@@ -186,6 +196,7 @@ export interface FileRouteTypes {
     | '/api/public/render-health'
     | '/p/$id/footage'
     | '/p/$id/make'
+    | '/p/$id/results'
     | '/p/$id/selects'
     | '/api/public/render-download/$id'
     | '/api/public/render-status/$id'
@@ -203,6 +214,7 @@ export interface FileRouteTypes {
     | '/api/public/render-health'
     | '/p/$id/footage'
     | '/p/$id/make'
+    | '/p/$id/results'
     | '/p/$id/selects'
     | '/api/public/render-download/$id'
     | '/api/public/render-status/$id'
@@ -309,6 +321,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PIdMakeRouteImport
       parentRoute: typeof PIdRoute
     }
+    '/p/$id/results': {
+      id: '/p/$id/results'
+      path: '/results'
+      fullPath: '/p/$id/results'
+      preLoaderRoute: typeof PIdResultsRouteImport
+      parentRoute: typeof PIdRoute
+    }
     '/p/$id/selects': {
       id: '/p/$id/selects'
       path: '/selects'
@@ -336,12 +355,14 @@ declare module '@tanstack/react-router' {
 interface PIdRouteChildren {
   PIdFootageRoute: typeof PIdFootageRoute
   PIdMakeRoute: typeof PIdMakeRoute
+  PIdResultsRoute: typeof PIdResultsRoute
   PIdSelectsRoute: typeof PIdSelectsRoute
 }
 
 const PIdRouteChildren: PIdRouteChildren = {
   PIdFootageRoute: PIdFootageRoute,
   PIdMakeRoute: PIdMakeRoute,
+  PIdResultsRoute: PIdResultsRoute,
   PIdSelectsRoute: PIdSelectsRoute,
 }
 
