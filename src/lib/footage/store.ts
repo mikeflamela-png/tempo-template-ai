@@ -53,6 +53,14 @@ function commit(next: State) {
   emit();
 }
 
+/** Anything created while hydration was still in flight must survive it. */
+function mergeById<T extends { id: string }>(stored: T[], live: T[]): T[] {
+  const out = [...stored];
+  const seen = new Set(stored.map((x) => x.id));
+  for (const item of live) if (!seen.has(item.id)) out.unshift(item);
+  return out;
+}
+
 export function hydrateFootage() {
   if (hydrating || state.ready || typeof window === "undefined") return;
   hydrating = true;
@@ -62,9 +70,9 @@ export function hydrateFootage() {
       if (blob) {
         const parsed = JSON.parse(await blob.text()) as Partial<State>;
         state = {
-          projects: parsed.projects ?? [],
-          sources: parsed.sources ?? [],
-          clips: parsed.clips ?? [],
+          projects: mergeById(parsed.projects ?? [], state.projects),
+          sources: mergeById(parsed.sources ?? [], state.sources),
+          clips: mergeById(parsed.clips ?? [], state.clips),
           ready: true,
         };
       } else {
@@ -73,6 +81,7 @@ export function hydrateFootage() {
     } catch {
       state = { ...state, ready: true };
     }
+    persist();
     emit();
   })();
 }
